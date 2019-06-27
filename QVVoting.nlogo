@@ -248,7 +248,7 @@ marginal-pivotality
 marginal-pivotality
 0
 1
-1.0
+0.65
 .05
 1
 NIL
@@ -288,8 +288,8 @@ PLOT
 Number of Voters by Votes cast
 Number of Votes
 Number of Voters
--10.0
-10.0
+-12.0
+12.0
 0.0
 10.0
 true
