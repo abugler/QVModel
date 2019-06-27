@@ -1,13 +1,17 @@
 breed [voters voter]
 breed [results result]
-voters-own [preferences voting-credits happiness]
+voters-own [value-gained voice-credits]
 results-own [outcome referendum-number]
+globals
+[last-votes-for last-votes-against last-referendum list-of-votes]
 
 to setup
   reset-ticks
   clear-all
-  spawn-voters-with-preferences
+  spawn-voters-with-value-gained
   spawn-results
+  set list-of-votes (list)
+  ask patches [set pcolor grey]
 end
 
 to go
@@ -18,19 +22,35 @@ to go
 end
 
 to vote [active-referendum]
+  set list-of-votes (list)
   let votes-for 0
   let votes-against 0
   ask results [set ycor 40]
   ask results with [active-referendum = referendum-number] [set ycor ycor - 2]
   ask voters [
-    if item active-referendum preferences > 0
-    [set votes-for votes-for + sqrt (round (voting-credits * item active-referendum preferences))]
-    if item active-referendum preferences < 0
-    [set votes-against votes-against + sqrt (round (voting-credits * item active-referendum preferences * -1))]
-    set size round (voting-credits * abs item active-referendum preferences)
-    set voting-credits voting-credits - round voting-credits * abs item active-referendum preferences
-    set color ifelse-value item active-referendum preferences > 0 [green][red]
-    set voting-credits voting-credits + 1
+    let votes votes-spent active-referendum
+
+    if item active-referendum value-gained > 0
+    [set votes-for votes-for + sqrt (votes)]
+    if item active-referendum value-gained < 0
+    [set votes-against votes-against + sqrt (votes)]
+    ifelse votes = 0
+    [
+      set color white
+      set list-of-votes fput 0 list-of-votes
+    ]
+    [
+      ifelse item active-referendum value-gained > 0
+      [
+        set list-of-votes fput sqrt votes list-of-votes
+        set color scale-color green sqrt(votes) 5 0
+      ]
+      [
+        set list-of-votes fput (-1 * sqrt votes) list-of-votes
+        set color scale-color red sqrt(votes) 5 0
+      ]
+    ]
+    if limit-votes? [set voice-credits voice-credits + votes-given-per-tick - votes]
   ]
   ask results with [active-referendum = referendum-number] [
     if votes-for > votes-against
@@ -43,19 +63,28 @@ to vote [active-referendum]
       set color red
     ]
   ]
+  set last-votes-for votes-for
+  set last-votes-against votes-against
+  set last-referendum active-referendum
 end
 
-;; spawns voters with random preferences for each issue
-to spawn-voters-with-preferences
+to-report votes-spent [active-referendum]
+  report ifelse-value limit-votes?
+  [min list ((item active-referendum value-gained * marginal-pivotality) ^ 2) voice-credits]
+  [(item active-referendum value-gained * marginal-pivotality) ^ 2]
+end
+
+;; spawns voters with random value-gained for each issue
+to spawn-voters-with-value-gained
   ask n-of number-of-voters patches with [pycor < 35][
     sprout-voters 1 [
       ; If the preference value is above 0, the agent prefers that this issue is in place (green)
       ; Likewise, if it is below 0, the agent prefers that the issue is voted against (red)
       ; If the voter has a preference of 0, it does not care about the issue
-      set preferences (list)
-      repeat number-of-issues [set preferences fput ((random-float 2 )- 1) preferences]
-      set color 5 + 10 * random 12
-      set voting-credits 1
+      set value-gained (list)
+      repeat number-of-issues [set value-gained fput ((random 21) - 10) value-gained]
+      set color white
+      set voice-credits votes-given-per-tick
   ]]
 end
 
@@ -71,11 +100,18 @@ to spawn-results
   ]]
 end
 
+to-report sum-of-received-value
+  let value-sum 0
+  ask voters [
+    set value-sum value-sum + item last-referendum value-gained
+  ]
+  report list value-sum (last-votes-for - last-votes-against)
+end
 @#$#@#$#@
 GRAPHICS-WINDOW
-210
+230
 10
-669
+689
 470
 -1
 -1
@@ -107,8 +143,8 @@ SLIDER
 number-of-issues
 number-of-issues
 1
-10
-10.0
+20
+20.0
 1
 1
 NIL
@@ -179,6 +215,76 @@ S
 NIL
 NIL
 1
+
+SLIDER
+25
+180
+197
+213
+marginal-pivotality
+marginal-pivotality
+0
+1
+0.75
+.05
+1
+NIL
+HORIZONTAL
+
+SLIDER
+25
+220
+197
+253
+votes-given-per-tick
+votes-given-per-tick
+0
+50
+11.0
+1
+1
+NIL
+HORIZONTAL
+
+MONITOR
+8
+259
+225
+304
+value-gained-if-passed and votes-cast
+sum-of-received-value
+5
+1
+11
+
+SWITCH
+26
+311
+144
+344
+limit-votes?
+limit-votes?
+1
+1
+-1000
+
+PLOT
+705
+85
+960
+277
+Number of Voters by Votes cast
+Number of Votes
+Number of Voters
+-10.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 1 -16777216 true "" "histogram list-of-votes"
 
 @#$#@#$#@
 ## WHAT IS IT?
