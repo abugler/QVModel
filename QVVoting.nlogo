@@ -1,9 +1,13 @@
 breed [voters voter]
-breed [results result]
+breed [results result]  ;; JACOB: based on the other code, these should be called [referenda referendum] instead of results.
 voters-own [utilities voice-credits]
 results-own [outcome referendum-number]
-globals
-[last-votes-for last-votes-against last-referendum list-of-votes]
+globals[  ;; JACOB: Just a style thing. I moved each global to a new line. Once you have more than 2, I find this more readable
+  last-votes-for
+  last-votes-against
+  last-referendum
+  list-of-votes
+]
 
 to setup
   clear-all
@@ -16,9 +20,13 @@ to setup
 end
 
 to go
+  ;; JACOB: instead of making active-referendum a number and using it to index the results (which should be called referenda),
+  ;; you can just use one-of and make active-referendum an actual referendum (currently results) agent and ask it to do
+  ;; stuff directly.  See comment below that starts "if you make active-referendum an agent"
   let active-referendum random count results
   vote active-referendum
   ; update-happiness
+
   tick
 end
 
@@ -26,16 +34,19 @@ to vote [active-referendum]
   set list-of-votes (list)
   let votes-for 0
   let votes-against 0
-  ask results [set ycor 40]
+
+  ask results [set ycor 40]  ;; JACOB: Code like these 2 lines should either be commented, or wrapped in a procedure with a descriptive name. I prefer the latter to keep the bigger procedure shorter.
   ask results with [active-referendum = referendum-number] [set ycor ycor - 2]
+
   ask voters [
     let votes sqrt voice-credits-spent active-referendum
 
-    if item active-referendum utilities > 0
-    [set votes-for votes-for + (votes)]
+    if item active-referendum utilities > 0 ;; JACOB: This should be an ifelse rather than two if statements. Except you can put this code in the conditionals of the next block of conditionals. In general you shouldn't need to use two if statements with the same conditional in a row
+    [set votes-for votes-for + (votes)] ;; JACOB: votes doesn't need parentheses around it
     if item active-referendum utilities < 0
     [set votes-against votes-against + (votes)]
-    ifelse votes = 0
+
+    ifelse votes = 0  ; JACOB: See the documentation on ifelse. If you wrap ifelse in parentheses, you can use it like if, elif, elif... in python. Do that to flatten out these nested conditionals so they aren't nested
     [
       set color white
       set list-of-votes fput 0 list-of-votes
@@ -52,7 +63,7 @@ to vote [active-referendum]
       ]
     ]
   ]
-  ask results with [active-referendum = referendum-number] [
+  ask results with [active-referendum = referendum-number] [  ;; JACOB: if you make active-referendum an agent you can just ask active-referenum instead of needing a with statement here
     if votes-for > votes-against
     [
       set outcome true
@@ -70,8 +81,9 @@ end
 
 to-report voice-credits-spent [active-referendum]
   let spent-voice-credits ifelse-value limit-votes?
-  [min list ( (item active-referendum utilities * marginal-pivotality) ^ 2) voice-credits ]
+  [min list ( (item active-referendum utilities * marginal-pivotality) ^ 2) voice-credits ]  ;; JACOB: Makes sense, but somethine like this should be commented
   [(item active-referendum utilities * marginal-pivotality) ^ 2]
+
   if limit-votes? [set voice-credits voice-credits + voice-credits-given-per-tick - spent-voice-credits]
   report spent-voice-credits
 end
@@ -86,13 +98,13 @@ to spawn-voters-with-utilities
       set utilities (list)
       repeat number-of-issues [set utilities fput ((random 21) - 10) utilities]
       set color white
-      set voice-credits voice-credits-given-per-tick
+      set voice-credits voice-credits-given-per-tick  ;; JACOB: This should maybe be more than what is given on each tick subsequently
   ]]
 end
 
 to spawn-results
-  ask patches with [pycor = 40 and pxcor < 2 * number-of-issues and (pxcor mod 2 = 0)][
-    sprout-results 1 [
+  ask patches with [pycor = 40 and pxcor < 2 * number-of-issues and (pxcor mod 2 = 0)][  ;; JACOB: In this case, using number-of-issues in this way works well. In other cases you might want to use the n-of command
+    sprout-results 1 [  ;; JACOB: I think you should change the shape of the issues so they are clearly distinguishable from the voters
 
       set color white
       set size 2
@@ -101,10 +113,13 @@ to spawn-results
 end
 
 to-report payoff ;;should be zero when setup
-  if first [outcome] of results with [last-referendum = referendum-number] = 0[report 0]
 
-  let value-sum 0
-  ifelse first [outcome] of results with [last-referendum = referendum-number] [
+  ;; JACOB: create a variable called something like last-outcome for "first [outcome] of results with [last-referendum = referendum-number" since you are repeating it below
+  if first [outcome] of results with [last-referendum = referendum-number] = 0 [report 0]  ;; JACOB: small thing, but I think referendum-number and last-referernudm should be switched here since the result owns referendum-number
+
+  let value-sum 0 ;; JACOB: call this payoff-sum since that is what you are summing
+
+  ifelse first [outcome] of results with [last-referendum = referendum-number] [  ;; JACOB: I think it would be clearer here to multiply the item last-referendum utilities by the last-outcome instead of using an ifelse
     ask voters [
     set value-sum value-sum + item last-referendum utilities
   ]
@@ -120,7 +135,7 @@ end
 to-report sum-of-utilities
   if first [outcome] of results with [last-referendum = referendum-number] = 0[report 0]
 
-  let value-sum 0
+  let value-sum 0  ;; JACOB: call this utility-sum since that is what you are summing
   ask voters [
     set value-sum value-sum + item last-referendum utilities
   ]
@@ -199,7 +214,7 @@ number-of-voters
 number-of-voters
 0
 1000
-822.0
+821.0
 1
 1
 NIL
@@ -248,7 +263,7 @@ marginal-pivotality
 marginal-pivotality
 0
 1
-0.65
+0.2
 .05
 1
 NIL
@@ -276,7 +291,7 @@ SWITCH
 346
 limit-votes?
 limit-votes?
-1
+0
 1
 -1000
 
