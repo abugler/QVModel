@@ -1,29 +1,35 @@
+extensions [py]
 breed [voters voter]
-breed [results result]  ;; JACOB: based on the other code, these should be called [referenda referendum] instead of results.
+breed [referenda referendum]  ;; JACOB: based on the other code, these should be called [referenda referendum] instead of referenda.
 voters-own [utilities voice-credits]
-results-own [outcome referendum-number]
-globals[  ;; JACOB: Just a style thing. I moved each global to a new line. Once you have more than 2, I find this more readable
+referenda-own [outcome]
+globals[
   last-votes-for
   last-votes-against
   last-referendum
+  last-outcome
   list-of-votes
+  a-value
+  b-value
 ]
 
 to setup
   clear-all
   reset-ticks
   spawn-voters-with-utilities
-  spawn-results
+  spawn-referenda
   set list-of-votes (list)
   ask patches [set pcolor grey]
   set last-referendum 0
+  py:setup py:python
+  py:run "import scipy.stats as stats"
 end
 
 to go
-  ;; JACOB: instead of making active-referendum a number and using it to index the results (which should be called referenda),
-  ;; you can just use one-of and make active-referendum an actual referendum (currently results) agent and ask it to do
+  ;; JACOB: instead of making active-referendum a number and using it to index the referenda (which should be called referenda),
+  ;; you can just use one-of and make active-referendum an actual referendum (currently referenda) agent and ask it to do
   ;; stuff directly.  See comment below that starts "if you make active-referendum an agent"
-  let active-referendum random count results
+  let active-referendum one-of referenda
   vote active-referendum
   ; update-happiness
 
@@ -35,35 +41,40 @@ to vote [active-referendum]
   let votes-for 0
   let votes-against 0
 
-  ask results [set ycor 40]  ;; JACOB: Code like these 2 lines should either be commented, or wrapped in a procedure with a descriptive name. I prefer the latter to keep the bigger procedure shorter.
-  ask results with [active-referendum = referendum-number] [set ycor ycor - 2]
+  ; using a beta dist for p-value
+  ; used equations here https://stats.stackexchange.com/questions/12232/calculating-the-parameters-of-a-beta-distribution-using-the-mean-and-variance
+  let var variance-of-perceived-pivotality
+  let ave mean-marginal-pivotality
+  set a-value ave ^ 2 * ( (1 - ave) / var - 1 / ave)
+  set b-value a-value * (1 / ave - 1)
+
+  change-referenda-position active-referendum
 
   ask voters [
     let votes sqrt voice-credits-spent active-referendum
 
-    if item active-referendum utilities > 0 ;; JACOB: This should be an ifelse rather than two if statements. Except you can put this code in the conditionals of the next block of conditionals. In general you shouldn't need to use two if statements with the same conditional in a row
-    [set votes-for votes-for + (votes)] ;; JACOB: votes doesn't need parentheses around it
-    if item active-referendum utilities < 0
-    [set votes-against votes-against + (votes)]
-
-    ifelse votes = 0  ; JACOB: See the documentation on ifelse. If you wrap ifelse in parentheses, you can use it like if, elif, elif... in python. Do that to flatten out these nested conditionals so they aren't nested
-    [
-      set color white
-      set list-of-votes fput 0 list-of-votes
-    ]
-    [
-      ifelse item active-referendum utilities > 0
+    (ifelse votes = 0
       [
+        set color white
+        set list-of-votes fput 0 list-of-votes
+      ]
+
+      utilities > 0
+      [
+        set votes-for votes-for + votes
         set list-of-votes fput votes list-of-votes
         set color scale-color green votes 5 0
       ]
+      utilities < 0
       [
+        set votes-against votes-against + (votes)
         set list-of-votes fput (-1 * votes) list-of-votes
         set color scale-color red votes 5 0
       ]
-    ]
+    )
   ]
-  ask results with [active-referendum = referendum-number] [  ;; JACOB: if you make active-referendum an agent you can just ask active-referenum instead of needing a with statement here
+
+  ask active-referendum [  ;; JACOB: if you make active-referendum an agent you can just ask active-referenum instead of needing a with statement here
     if votes-for > votes-against
     [
       set outcome true
@@ -73,19 +84,37 @@ to vote [active-referendum]
       set outcome false
       set color red
     ]
+    set last-outcome outcome
   ]
   set last-votes-for votes-for
   set last-votes-against votes-against
   set last-referendum active-referendum
 end
 
-to-report voice-credits-spent [active-referendum]
+to change-referenda-position [active-referendum]
+  ask referenda [set ycor 40]
+  ask active-referendum [set ycor ycor - 2]
+end
+
+to-report voice-credits-spent [active-referendum] ; voter function
   let spent-voice-credits ifelse-value limit-votes?
-  [min list ( (item active-referendum utilities * marginal-pivotality) ^ 2) voice-credits ]  ;; JACOB: Makes sense, but somethine like this should be commented
-  [(item active-referendum utilities * marginal-pivotality) ^ 2]
+  [min list ( (utilities * calculate-p-value) ^ 2) voice-credits ]
+  [(utilities * calculate-p-value) ^ 2]
 
   if limit-votes? [set voice-credits voice-credits + voice-credits-given-per-tick - spent-voice-credits]
   report spent-voice-credits
+end
+
+to-report calculate-p-value
+  ifelse mean-marginal-pivotality != 1
+  [
+    py:set "a" a-value
+    py:set "b" b-value
+    report py:runresult "stats.beta.rvs(a, b)"
+  ]
+  [
+    report 1
+  ]
 end
 
 ;; spawns voters with random utilities for each issue
@@ -95,51 +124,47 @@ to spawn-voters-with-utilities
       ; If the preference value is above 0, the agent prefers that this issue is in place (green)
       ; Likewise, if it is below 0, the agent prefers that the issue is voted against (red)
       ; If the voter has a preference of 0, it does not care about the issue
-      set utilities (list)
-      repeat number-of-issues [set utilities fput ((random 21) - 10) utilities]
+      set utilities random-normal mean-of-utilities variance-of-utilities
       set color white
       set voice-credits voice-credits-given-per-tick  ;; JACOB: This should maybe be more than what is given on each tick subsequently
+      set shape "person"
   ]]
 end
 
-to spawn-results
-  ask patches with [pycor = 40 and pxcor < 2 * number-of-issues and (pxcor mod 2 = 0)][  ;; JACOB: In this case, using number-of-issues in this way works well. In other cases you might want to use the n-of command
-    sprout-results 1 [  ;; JACOB: I think you should change the shape of the issues so they are clearly distinguishable from the voters
-
+to spawn-referenda
+  ask patches with [pycor = 40 and pxcor = 20][  ;; JACOB: In this case, using number-of-issues in this way works well. In other cases you might want to use the n-of command
+    sprout-referenda 1 [
+      set shape "square"
       set color white
       set size 2
-      set referendum-number xcor / 2
   ]]
 end
 
 to-report payoff ;;should be zero when setup
 
-  ;; JACOB: create a variable called something like last-outcome for "first [outcome] of results with [last-referendum = referendum-number" since you are repeating it below
-  if first [outcome] of results with [last-referendum = referendum-number] = 0 [report 0]  ;; JACOB: small thing, but I think referendum-number and last-referernudm should be switched here since the result owns referendum-number
+  ;; JACOB: create a variable called something like last-outcome for "first [outcome] of referenda with [last-referendum = referendum-number" since you are repeating it below
+  if last-outcome = 0 [report 0]  ;; JACOB: small thing, but I think referendum-number and last-referernudm should be switched here since the referendum owns referendum-number
 
-  let value-sum 0 ;; JACOB: call this payoff-sum since that is what you are summing
+  let payoff-sum 0
+  ask voters [
+    set payoff-sum payoff-sum + utilities
+  ]
 
-  ifelse first [outcome] of results with [last-referendum = referendum-number] [  ;; JACOB: I think it would be clearer here to multiply the item last-referendum utilities by the last-outcome instead of using an ifelse
-    ask voters [
-    set value-sum value-sum + item last-referendum utilities
+  if not last-outcome [
+    set payoff-sum payoff-sum * -1
   ]
-  ][
-    ask voters [
-      set value-sum value-sum - item last-referendum utilities
-    ]
-  ]
-  report value-sum
+  report payoff-sum
 end
 
 
 to-report sum-of-utilities
-  if first [outcome] of results with [last-referendum = referendum-number] = 0[report 0]
+  if last-outcome = 0[report 0]
 
-  let value-sum 0  ;; JACOB: call this utility-sum since that is what you are summing
+  let utility-sum 0
   ask voters [
-    set value-sum value-sum + item last-referendum utilities
+    set utility-sum utility-sum + utilities
   ]
-  report value-sum
+  report utility-sum
 end
 
 to-report sum-of-votes
@@ -173,21 +198,6 @@ GRAPHICS-WINDOW
 ticks
 30.0
 
-SLIDER
-25
-100
-197
-133
-number-of-issues
-number-of-issues
-1
-1
-1.0
-1
-1
-NIL
-HORIZONTAL
-
 BUTTON
 120
 62
@@ -206,15 +216,15 @@ NIL
 1
 
 SLIDER
-25
-140
-197
-173
+27
+99
+199
+132
 number-of-voters
 number-of-voters
 0
 1000
-821.0
+1000.0
 1
 1
 NIL
@@ -255,43 +265,28 @@ NIL
 1
 
 SLIDER
-25
-180
-197
-213
-marginal-pivotality
-marginal-pivotality
-0
-1
-0.2
-.05
-1
-NIL
-HORIZONTAL
-
-SLIDER
-25
-220
-219
-253
+27
+282
+221
+315
 voice-credits-given-per-tick
 voice-credits-given-per-tick
 0
 50
-5.0
+0.0
 1
 1
 NIL
 HORIZONTAL
 
 SWITCH
-10
-313
-118
-346
+12
+375
+120
+408
 limit-votes?
 limit-votes?
-0
+1
 1
 -1000
 
@@ -311,14 +306,14 @@ true
 false
 "" ""
 PENS
-"positive" 1.0 1 -13840069 true "" "histogram filter [a -> a >= 1] list-of-votes"
-"negative" 1.0 1 -2674135 true "" "histogram filter [a -> a < 1] list-of-votes"
+"positive" 1.0 1 -13840069 true "" "histogram filter [a -> a >= 0] list-of-votes"
+"negative" 1.0 1 -2674135 true "" "histogram filter [a -> a < 0] list-of-votes"
 
 MONITOR
-26
-257
-120
-302
+28
+319
+122
+364
 payoff
 payoff
 17
@@ -326,10 +321,10 @@ payoff
 11
 
 MONITOR
-125
-257
-212
-302
+127
+319
+214
+364
 sum-of-votes
 sum-of-votes
 2
@@ -352,19 +347,79 @@ true
 false
 "" ""
 PENS
-"default" 1.0 1 -13840069 true "" "histogram filter [a -> a >= 0][item last-referendum utilities] of voters"
-"pen-1" 1.0 1 -2674135 true "" "histogram filter [a -> a <= 0][item last-referendum utilities] of voters"
+"default" 1.0 1 -13840069 true "" "histogram filter [a -> a >= 0][utilities] of voters"
+"pen-1" 1.0 1 -2674135 true "" "histogram filter [a -> a < 0][utilities] of voters"
 
 MONITOR
-124
-307
-218
-352
+126
+369
+220
+414
 sum-of-utilities
 sum-of-utilities
 1
 1
 11
+
+SLIDER
+27
+134
+199
+167
+mean-of-utilities
+mean-of-utilities
+-10
+10
+0.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+27
+169
+199
+202
+variance-of-utilities
+variance-of-utilities
+0
+10
+10.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+26
+241
+229
+274
+variance-of-perceived-pivotality
+variance-of-perceived-pivotality
+.001
+mean-marginal-pivotality - mean-marginal-pivotality ^ 2 - .001
+0.135
+.001
+1
+NIL
+HORIZONTAL
+
+SLIDER
+27
+206
+213
+239
+mean-marginal-pivotality
+mean-marginal-pivotality
+.05
+1
+0.4
+.05
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -713,21 +768,15 @@ NetLogo 6.1.0
 @#$#@#$#@
 @#$#@#$#@
 <experiments>
-  <experiment name="experiment" repetitions="5" runMetricsEveryStep="true">
+  <experiment name="Is-Payoff-always-positive?" repetitions="100" runMetricsEveryStep="true">
     <setup>setup</setup>
     <go>go</go>
     <timeLimit steps="1"/>
     <metric>payoff</metric>
-    <metric>sum-of-votes</metric>
-    <metric>sum-of-utilities</metric>
-    <enumeratedValueSet variable="number-of-voters">
-      <value value="822"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="marginal-pivotality">
-      <value value="1"/>
-    </enumeratedValueSet>
+    <steppedValueSet variable="number-of-voters" first="5" step="5" last="1000"/>
+    <steppedValueSet variable="marginal-pivotality" first="0.05" step="0.05" last="1"/>
     <enumeratedValueSet variable="voice-credits-given-per-tick">
-      <value value="5"/>
+      <value value="0"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="limit-votes?">
       <value value="false"/>
