@@ -1,7 +1,7 @@
 extensions [py]
 breed [voters voter]
 breed [referenda referendum]  ;; JACOB: based on the other code, these should be called [referenda referendum] instead of referenda.
-voters-own [utilities voice-credits]
+voters-own [utilities voice-credits perceived-p-value]
 referenda-own [outcome]
 globals[
   last-votes-for
@@ -41,12 +41,7 @@ to vote [active-referendum]
   let votes-for 0
   let votes-against 0
 
-  ; using a beta dist for p-value
-  ; used equations here https://stats.stackexchange.com/questions/12232/calculating-the-parameters-of-a-beta-distribution-using-the-mean-and-variance
-  let var variance-of-perceived-pivotality
-  let ave mean-marginal-pivotality
-  set a-value ave ^ 2 * ( (1 - ave) / var - 1 / ave)
-  set b-value a-value * (1 / ave - 1)
+  assign-p-values-to-voters
 
   change-referenda-position active-referendum
 
@@ -91,6 +86,29 @@ to vote [active-referendum]
   set last-referendum active-referendum
 end
 
+to assign-p-values-to-voters
+  ifelse marginal-pivotality = 1 or variance-of-perceived-pivotality = 0[
+    ask voters [set perceived-p-value marginal-pivotality]
+  ]
+  [
+    ; using a beta dist for p-value
+    ; used equations here https://stats.stackexchange.com/questions/12232/calculating-the-parameters-of-a-beta-distribution-using-the-mean-and-variance
+    let var variance-of-perceived-pivotality
+    let ave marginal-pivotality
+    let max-var marginal-pivotality - marginal-pivotality ^ 2
+    if var > max-var [set var .99 * max-var]
+    set a-value ave ^ 2 * ( (1 - ave) / var - 1 / ave)
+    set b-value a-value * (1 / ave - 1)
+
+    py:set "a" a-value
+    py:set "b" b-value
+    py:set "number_of_voters" number-of-voters
+    let list-of-p py:runresult "stats.beta.rvs(a, b, size = number_of_voters)"
+
+    ask voters [set perceived-p-value item who list-of-p]
+  ]
+end
+
 to change-referenda-position [active-referendum]
   ask referenda [set ycor 40]
   ask active-referendum [set ycor ycor - 2]
@@ -98,15 +116,15 @@ end
 
 to-report voice-credits-spent [active-referendum] ; voter function
   let spent-voice-credits ifelse-value limit-votes?
-  [min list ( (utilities * calculate-p-value) ^ 2) voice-credits ]
-  [(utilities * calculate-p-value) ^ 2]
+  [min list ( (utilities * perceived-p-value) ^ 2) voice-credits ]
+  [(utilities * perceived-p-value) ^ 2]
 
   if limit-votes? [set voice-credits voice-credits + voice-credits-given-per-tick - spent-voice-credits]
   report spent-voice-credits
 end
 
 to-report calculate-p-value
-  ifelse mean-marginal-pivotality != 1
+  ifelse marginal-pivotality != 1
   [
     py:set "a" a-value
     py:set "b" b-value
@@ -124,7 +142,7 @@ to spawn-voters-with-utilities
       ; If the preference value is above 0, the agent prefers that this issue is in place (green)
       ; Likewise, if it is below 0, the agent prefers that the issue is voted against (red)
       ; If the voter has a preference of 0, it does not care about the issue
-      set utilities random-normal mean-of-utilities variance-of-utilities
+      set utilities random-normal mean-of-utilities stdev-of-utilities
       set color white
       set voice-credits voice-credits-given-per-tick  ;; JACOB: This should maybe be more than what is given on each tick subsequently
       set shape "person"
@@ -265,10 +283,10 @@ NIL
 1
 
 SLIDER
-27
-282
-221
-315
+28
+276
+222
+309
 voice-credits-given-per-tick
 voice-credits-given-per-tick
 0
@@ -280,10 +298,10 @@ NIL
 HORIZONTAL
 
 SWITCH
-12
-375
-120
-408
+13
+369
+121
+402
 limit-votes?
 limit-votes?
 1
@@ -310,10 +328,10 @@ PENS
 "negative" 1.0 1 -2674135 true "" "histogram filter [a -> a < 0] list-of-votes"
 
 MONITOR
-28
-319
-122
-364
+29
+313
+123
+358
 payoff
 payoff
 17
@@ -321,10 +339,10 @@ payoff
 11
 
 MONITOR
-127
-319
-214
-364
+128
+313
+215
+358
 sum-of-votes
 sum-of-votes
 2
@@ -351,10 +369,10 @@ PENS
 "pen-1" 1.0 1 -2674135 true "" "histogram filter [a -> a < 0][utilities] of voters"
 
 MONITOR
-126
-369
-220
-414
+127
+363
+221
+408
 sum-of-utilities
 sum-of-utilities
 1
@@ -381,26 +399,26 @@ SLIDER
 169
 199
 202
-variance-of-utilities
-variance-of-utilities
+stdev-of-utilities
+stdev-of-utilities
 0
 10
-10.0
+5.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-26
-241
-229
-274
+28
+242
+231
+275
 variance-of-perceived-pivotality
 variance-of-perceived-pivotality
-.001
-mean-marginal-pivotality - mean-marginal-pivotality ^ 2 - .001
-0.135
+0
+marginal-pivotality - marginal-pivotality ^ 2 - .001
+0.159375
 .001
 1
 NIL
@@ -411,15 +429,33 @@ SLIDER
 206
 213
 239
-mean-marginal-pivotality
-mean-marginal-pivotality
+marginal-pivotality
+marginal-pivotality
 .05
 1
-0.4
+0.75
 .05
 1
 NIL
 HORIZONTAL
+
+PLOT
+961
+22
+1208
+215
+Distribution of perceived Marginal Pivotality
+Perceived Marginal Pivotality
+Number of Voters
+0.0
+1.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 0.1 1 -16777216 true "" "histogram map [a -> ifelse-value a = 1 [.999][floor (10 * a) / 10]] [perceived-p-value] of voters"
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -783,6 +819,35 @@ NetLogo 6.1.0
     </enumeratedValueSet>
     <enumeratedValueSet variable="number-of-issues">
       <value value="1"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="Is payoff &gt; 0 for a varied p?" repetitions="1000" runMetricsEveryStep="true">
+    <setup>;; The variance-of-perceived-pivotality in the behavior space is not the actual behavorspace
+;; It is the proportion of the max-variance that will be used each run
+set variance-of-perceived-pivotality variance-of-perceived-pivotality * (marginal-pivotality - marginal-pivotality ^ 2)
+setup</setup>
+    <go>go</go>
+    <timeLimit steps="1"/>
+    <metric>precision variance-of-perceived-pivotality 4</metric>
+    <metric>sum-of-votes</metric>
+    <metric>sum-of-utilities</metric>
+    <metric>payoff &gt;= 0</metric>
+    <enumeratedValueSet variable="number-of-voters">
+      <value value="1000"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="marginal-pivotality" first="0.25" step="0.05" last="0.75"/>
+    <enumeratedValueSet variable="voice-credits-given-per-tick">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="stdev-of-utilities">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="limit-votes?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="variance-of-perceived-pivotality" first="0.25" step="0.1" last="0.85"/>
+    <enumeratedValueSet variable="mean-of-utilities">
+      <value value="0"/>
     </enumeratedValueSet>
   </experiment>
 </experiments>
