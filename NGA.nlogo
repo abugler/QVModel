@@ -1,9 +1,21 @@
 breed[voters voter]
-breed[true-utilities true-utility]
 breed[influencers influencer]
 voters-own[
   x-utility
   y-utility
+  last-x-vote
+  last-y-vote
+  strategic?
+]
+influencers-own[
+  influence-type
+  radius
+]
+globals
+[
+  change-of-x
+  change-of-y
+  last-step-size
 ]
 
 to setup
@@ -17,7 +29,10 @@ to setup
   ; The xcor and ycor of the voters represent the utility gain, if the social policy xcor has the equivalent sign.
   ask n-of number-of-voters patches with [ pxcor ^ 2 + pycor ^ 2 - max-pxcor ^ 2 < 0] [
     sprout-voters 1 [
-      set color violet
+      set strategic? (random-float 1 < proportion-of-strategic-voters)
+      ifelse strategic?
+      [set color pink]
+      [set color violet]
       set x-utility xcor
       set y-utility ycor
     ]
@@ -34,43 +49,106 @@ to setup
   reset-ticks
 end
 
-to vote
+to vote-NGA
   ; Have influencers change the opinion of the voters, to more align with them
-  ask influencers [
-    ask link-neighbors [
-      face myself
-      forward distance myself * random-float .1
-    ]
-  ]
+  ask influencers [influence]
+
   ; First find the total utility of all of the voters
   let total-x-utility 0
   let total-y-utility 0
   let social-policy-vector one-of turtles with [color = green and shape = "triangle"]
   ask voters [
     ; Add the voters preferred change to the overall change
-    let preferred-x-change xcor - [xcor] of social-policy-vector
-    let preferred-y-change ycor - [ycor] of social-policy-vector
+    set last-x-vote preferred-x social-policy-vector
+    set last-y-vote preferred-y social-policy-vector
+
     ; If the length of the preference vector is greater than the radius of the unit circle
     ; shorten it's length to the unit circle radius
-    if (preferred-x-change ^ 2 + preferred-y-change ^ 2 > max-pxcor ^ 2)
+    if (last-x-vote ^ 2 + last-y-vote ^ 2 > max-pxcor ^ 2)
     [
-      set preferred-x-change preferred-x-change / sqrt (preferred-x-change ^ 2 + preferred-y-change ^ 2) * max-pxcor
-      set preferred-x-change preferred-x-change / sqrt (preferred-x-change ^ 2 + preferred-y-change ^ 2) * max-pxcor
+      set last-x-vote last-x-vote / sqrt (last-x-vote ^ 2 + last-y-vote ^ 2) * max-pxcor
+      set last-y-vote last-y-vote / sqrt (last-x-vote ^ 2 + last-y-vote ^ 2) * max-pxcor
     ]
-    set total-x-utility total-x-utility + preferred-x-change
-    set total-y-utility total-y-utility + preferred-y-change
+    set total-x-utility total-x-utility + last-x-vote
+    set total-y-utility total-y-utility + last-y-vote
   ]
-  ;
+  ; Find average vector
   set total-x-utility total-x-utility / number-of-voters
   set total-y-utility total-y-utility / number-of-voters
-  show total-x-utility
-  show total-y-utility
+
+  ; Increment by step size
+  let last-x [xcor] of social-policy-vector
+  let last-y [ycor] of social-policy-vector
   ask social-policy-vector
   [
     set xcor xcor + total-x-utility * step-size
     set ycor ycor + total-y-utility * step-size
   ]
+  set change-of-x [xcor] of social-policy-vector - last-x
+  set change-of-y [ycor] of social-policy-vector - last-y
+  set last-step-size step-size
   tick
+end
+
+to influence
+  create-links-to voters with [distance myself < [radius] of myself]
+  ask links [set color yellow]
+  ask links with [link-length > [radius] of myself][die]
+  ask link-neighbors [
+    (ifelse
+      [influence-type] of myself = "Attractor"
+      [
+        face myself
+        forward distance myself * influencer-strength
+      ]
+      [influence-type] of myself = "Taboo"
+      [
+        face myself
+        rt 180
+        if [radius] of myself - distance myself > 0
+        [forward ([radius] of myself - distance myself) * influencer-strength + .5]
+      ]
+      [influence-type] of myself = "Extremist"
+      [
+        face patch 0 0
+        rt 180
+        forward influencer-strength * (sqrt(max-pxcor ^ 2 + max-pycor ^ 2) - distance patch 0 0)
+      ]
+      [influence-type] of myself = "Centrist"
+      [
+        face patch 0 0
+        forward influencer-strength * distance patch 0 0
+      ]
+    )
+  ]
+end
+
+to vote-1p1v
+  let total-x-votes 0
+  let total-y-votes 0
+  let social-policy-vector one-of turtles with [color = green and shape = "triangle"]
+  ask voters [
+    set total-x-votes total-x-votes + ifelse-value xcor != 0  [xcor / abs xcor] [0]
+    set total-y-votes total-y-votes + ifelse-value ycor != 0  [ycor / abs ycor] [0]
+  ]
+  ask social-policy-vector
+  [
+    set xcor (ifelse-value total-y-votes = 0 [0] abs total-x-votes > max-pxcor [max-pxcor * total-x-votes / abs total-x-votes] [total-x-votes])
+    set ycor (ifelse-value total-x-votes = 0 [0] abs total-y-votes > max-pycor [max-pycor * total-y-votes / abs total-y-votes] [total-y-votes])
+  ]
+  tick
+end
+
+to-report preferred-x [social-policy-vector]
+  ifelse strategic? and ticks != 0
+  [report xcor - ([xcor] of social-policy-vector + change-of-x - last-x-vote * last-step-size / count voters )]
+  [report xcor - [xcor] of social-policy-vector]
+end
+
+to-report preferred-y [social-policy-vector]
+  ifelse strategic? and ticks != 0
+  [report ycor - ([ycor] of social-policy-vector + change-of-y - last-y-vote * last-step-size / count voters)]
+  [report ycor - [ycor] of social-policy-vector]
 end
 
 to-report total-utility-gain
@@ -92,28 +170,42 @@ to insert-influencers
     ; Wait for mouse to stop being down
     while [mouse-down?][]
     ; Add an influencer
-    ask patch mouse-xcor mouse-ycor [
-      sprout-influencers 1 [
-        set color green
-        set shape "monster"
-        set size influencer-radius / 5
-        ; Find voters nearby to connect with
-        create-links-to voters with
-        [(xcor - [xcor] of myself)^ 2 + (ycor - [ycor] of myself)^ 2 < influencer-radius ^ 2]
-        [
-          set color yellow
-        ]
-        ; Show their real utility with a stamp, and turn them red
-        ask link-neighbors [
-          if (count link-neighbors = 1)[
-            set color blue
-            stamp
-          ]
-          set color red
-          face myself
-        ]
-      ]
+    make-influencer mouse-xcor mouse-ycor
+  ]
+end
+
+to make-influencer [x y]
+  ask patch x y [
+  sprout-influencers 1 [
+    set shape "monster"
+    set size influencer-radius / 5
+    set radius influencer-radius
+    ; Find voters nearby to connect with
+    create-links-to voters with
+    [(xcor - [xcor] of myself) ^ 2 + (ycor - [ycor] of myself)^ 2 < influencer-radius ^ 2]
+    [
+      set color yellow
     ]
+    ; Show their real utility with a stamp, and turn them red
+    ask link-neighbors [
+      if (xcor = x-utility and ycor = y-utility)[
+        set color blue
+        stamp
+      ]
+      set color red
+      face myself
+    ]
+      set influence-type Influencer-type
+      (ifelse influence-type = "Attractor"
+        [set color cyan]
+        influence-type = "Taboo"
+        [set color orange]
+        influence-type = "Extremist"
+        [set color magenta]
+        influence-type = "Centrist"
+        [set color grey]
+      )
+  ]
   ]
 end
 @#$#@#$#@
@@ -150,7 +242,7 @@ BUTTON
 161
 74
 Vote
-vote
+ifelse NGA? [vote-NGA][vote-1p1v]
 NIL
 1
 T
@@ -180,9 +272,9 @@ NIL
 
 SLIDER
 28
-77
+111
 200
-110
+144
 number-of-voters
 number-of-voters
 1
@@ -195,14 +287,14 @@ HORIZONTAL
 
 SLIDER
 29
-113
+147
 201
-146
+180
 step-size
 step-size
 0
 1
-1.0
+0.7
 .05
 1
 NIL
@@ -210,20 +302,20 @@ HORIZONTAL
 
 MONITOR
 30
-149
-102
-194
-Utility Gain
+183
+90
+228
+Utility
 total-utility-gain
 3
 1
 11
 
 BUTTON
-19
-197
-206
-230
+630
+11
+817
+44
 Enable Inserting Influencers
 insert-influencers
 T
@@ -237,10 +329,10 @@ NIL
 1
 
 SLIDER
-23
-233
-195
-266
+633
+117
+819
+150
 influencer-radius
 influencer-radius
 0
@@ -252,10 +344,10 @@ NIL
 HORIZONTAL
 
 MONITOR
-22
-271
-143
-316
+89
+183
+202
+228
 Current Policy Vector
 map [x -> precision x 2 ] (list one-of [xcor] of turtles with [color = green and shape = \"triangle\"] one-of [ycor] of turtles with [color = green and shape = \"triangle\"])
 2
@@ -263,10 +355,10 @@ map [x -> precision x 2 ] (list one-of [xcor] of turtles with [color = green and
 11
 
 BUTTON
-22
-321
-180
-354
+631
+46
+818
+79
 Toggle Influencer Links
 ask links [ set hidden? not hidden?]
 NIL
@@ -280,10 +372,10 @@ NIL
 1
 
 BUTTON
-39
-375
-188
-408
+632
+81
+818
+114
 Delete All Influencers
 ask influencers [die]
 NIL
@@ -295,6 +387,91 @@ W
 NIL
 NIL
 1
+
+SLIDER
+0
+229
+203
+262
+proportion-of-strategic-voters
+proportion-of-strategic-voters
+0
+1
+0.0
+.01
+1
+NIL
+HORIZONTAL
+
+BUTTON
+26
+76
+130
+109
+Vote Forever
+ifelse NGA? [vote-NGA][vote-1p1v]
+T
+1
+T
+OBSERVER
+NIL
+F
+NIL
+NIL
+1
+
+SWITCH
+64
+273
+167
+306
+NGA?
+NGA?
+0
+1
+-1000
+
+BUTTON
+96
+334
+198
+367
+Toggle NGA?
+set NGA? not NGA?
+NIL
+1
+T
+OBSERVER
+NIL
+R
+NIL
+NIL
+1
+
+SLIDER
+633
+153
+819
+186
+influencer-strength
+influencer-strength
+0
+1
+0.05
+.01
+1
+NIL
+HORIZONTAL
+
+CHOOSER
+842
+25
+980
+70
+Influencer-Type
+Influencer-Type
+"Attractor" "Taboo" "Extremist" "Centrist"
+3
 
 @#$#@#$#@
 ## WHAT IS IT?
