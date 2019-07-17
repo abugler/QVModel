@@ -1,3 +1,7 @@
+; JACOB's GENERAL COMMENTS:
+; - Any settings that only change before setup (e.g. proportion-of-strategic-voters) place above the setup button in the interface. If
+;   the setting can change dynamically while the model runs, then put it below the setup and go buttons.
+
 breed[voters voter]
 breed[influencers influencer]
 voters-own[
@@ -16,10 +20,12 @@ globals
   change-of-x
   change-of-y
   last-step-size
+
 ]
 
 to setup
   clear-all
+
 
   ; Create Unit Circle
   ask patches with [pxcor = 0 or pycor = 0 ] [set pcolor white]
@@ -46,6 +52,7 @@ to setup
       set size 3
     ]
   ]
+
   reset-ticks
 end
 
@@ -57,9 +64,10 @@ to vote-NGA
   let total-x-utility 0
   let total-y-utility 0
   let social-policy-vector one-of turtles with [color = green and shape = "triangle"]
+
   ask voters [
     ; Add the voters preferred change to the overall change
-    set last-x-vote preferred-x social-policy-vector
+    set last-x-vote preferred-x social-policy-vector  ;; JACOB: Isn't this the current vote? Why is it called last-x-vote?
     set last-y-vote preferred-y social-policy-vector
 
     ; If the length of the preference vector is greater than the radius of the unit circle
@@ -72,19 +80,23 @@ to vote-NGA
     set total-x-utility total-x-utility + last-x-vote
     set total-y-utility total-y-utility + last-y-vote
   ]
+
+  ;; JACOB: Instead of summing everything like you do here and then dividing by number of voters, create a reporter called something like
+  ;;        individual-x-utility that has the above voter code in it. Then you can just write:
+  ;;        set total-x-utility mean [individual-x-utility] of voters (and likewise for total-y-utility)
   ; Find average vector
-  set total-x-utility total-x-utility / number-of-voters
+  set total-x-utility total-x-utility / number-of-voters  ;; JACOB: call this ave-x-utility since that is what it is, but calculate like in the previous) comment. Except I think this is ave-desired-x-change. Get clear on what it is exactly and make the name reflect that.
   set total-y-utility total-y-utility / number-of-voters
 
   ; Increment by step size
-  let last-x [xcor] of social-policy-vector
+  let last-x [xcor] of social-policy-vector  ; JACOB: you don't need these
   let last-y [ycor] of social-policy-vector
   ask social-policy-vector
   [
     set xcor xcor + total-x-utility * step-size
     set ycor ycor + total-y-utility * step-size
   ]
-  set change-of-x [xcor] of social-policy-vector - last-x
+  set change-of-x [xcor] of social-policy-vector - last-x ; JACOB: change-of-x is just total-x-utility * step-size. Also, this only gets used by strategic voters, so call it last-change-of-x
   set change-of-y [ycor] of social-policy-vector - last-y
   set last-step-size step-size
   tick
@@ -93,9 +105,9 @@ end
 to influence
   create-links-to voters with [distance myself < [radius] of myself]
   ask links [set color yellow]
-  ask links with [link-length > [radius] of myself][die]
+  ask links with [link-length > [radius] of myself] [die]
   ask link-neighbors [
-    (ifelse
+    (ifelse ;; JACOB: add comments to explain what these different influencer types are.
       [influence-type] of myself = "Attractor"
       [
         face myself
@@ -139,7 +151,7 @@ to vote-1p1v
   tick
 end
 
-to-report preferred-x [social-policy-vector]
+to-report preferred-x [social-policy-vector]   ;; JACOB: Isn't this preferred change in x? If so, make the name reflect that (and likewise for preferred-y)
   ifelse strategic? and ticks != 0
   [report xcor - ([xcor] of social-policy-vector + change-of-x - last-x-vote * last-step-size / count voters )]
   [report xcor - [xcor] of social-policy-vector]
@@ -155,7 +167,7 @@ to-report total-utility-gain
   let utility 0
   if ticks != 0[
     ; social policy vector
-    let sp-vector-x  one-of [xcor] of turtles with [color = green and shape = "triangle"]
+    let sp-vector-x  one-of [xcor] of turtles with [color = green and shape = "triangle"]  ; JACOB: since you do this (one-of turtles with [color=green...) a lot, I would make the social-policy vector a global variable
     let sp-vector-y  one-of [ycor] of turtles with [color = green and shape = "triangle"]
     ask voters[
       set utility utility + x-utility * sp-vector-x / abs sp-vector-x
