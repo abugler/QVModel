@@ -229,7 +229,7 @@ end
 to delete-voters
   if mouse-down? [
     ask patch mouse-xcor mouse-ycor [
-      ask turtles in-radius 2 [die]
+      ask voters in-radius 2 [die]
     ]
   ]
 end
@@ -422,7 +422,7 @@ proportion-of-strategic-voters
 proportion-of-strategic-voters
 0
 1
-0.0
+1.0
 .01
 1
 NIL
@@ -510,7 +510,7 @@ T
 T
 OBSERVER
 NIL
-NIL
+E
 NIL
 NIL
 1
