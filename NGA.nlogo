@@ -1,12 +1,10 @@
-; JACOB's GENERAL COMMENTS:
-; - Any settings that only change before setup (e.g. proportion-of-strategic-voters) place above the setup button in the interface. If
-;   the setting can change dynamically while the model runs, then put it below the setup and go buttons.
-
 breed[voters voter]
 breed[influencers influencer]
 voters-own[
   x-utility
   y-utility
+  x-vote
+  y-vote
   last-x-vote
   last-y-vote
   strategic?
@@ -20,14 +18,13 @@ globals
   change-of-x
   change-of-y
   last-step-size
-
+  social-policy-vector
 ]
 
 to setup
   clear-all
-
-
-  ; Create Unit Circle
+  reset-ticks
+  ; Create Unit Circle, containing varied opinions
   ask patches with [pxcor = 0 or pycor = 0 ] [set pcolor white]
   ask patches with [ abs (pxcor ^ 2 + pycor ^ 2 - max-pxcor ^ 2) < max-pxcor] [set pcolor red]
 
@@ -52,97 +49,43 @@ to setup
       set size 3
     ]
   ]
-
-  reset-ticks
+  set social-policy-vector one-of turtles with [color = green and shape = "triangle"]
 end
 
 to vote-NGA
   ; Have influencers change the opinion of the voters, to more align with them
   ask influencers [influence]
 
-  ; First find the total utility of all of the voters
-  let total-x-utility 0
-  let total-y-utility 0
-  let social-policy-vector one-of turtles with [color = green and shape = "triangle"]
-
-  ask voters [
-    ; Add the voters preferred change to the overall change
-    set last-x-vote preferred-x social-policy-vector  ;; JACOB: Isn't this the current vote? Why is it called last-x-vote?
-    set last-y-vote preferred-y social-policy-vector
-
-    ; If the length of the preference vector is greater than the radius of the unit circle
-    ; shorten it's length to the unit circle radius
-    if (last-x-vote ^ 2 + last-y-vote ^ 2 > max-pxcor ^ 2)
-    [
-      set last-x-vote last-x-vote / sqrt (last-x-vote ^ 2 + last-y-vote ^ 2) * max-pxcor
-      set last-y-vote last-y-vote / sqrt (last-x-vote ^ 2 + last-y-vote ^ 2) * max-pxcor
-    ]
-    set total-x-utility total-x-utility + last-x-vote
-    set total-y-utility total-y-utility + last-y-vote
-  ]
-
-  ;; JACOB: Instead of summing everything like you do here and then dividing by number of voters, create a reporter called something like
-  ;;        individual-x-utility that has the above voter code in it. Then you can just write:
-  ;;        set total-x-utility mean [individual-x-utility] of voters (and likewise for total-y-utility)
-  ; Find average vector
-  set total-x-utility total-x-utility / number-of-voters  ;; JACOB: call this ave-x-utility since that is what it is, but calculate like in the previous) comment. Except I think this is ave-desired-x-change. Get clear on what it is exactly and make the name reflect that.
-  set total-y-utility total-y-utility / number-of-voters
+  ; Have voters calculate their preferred change in the SP vector, and take the averages of all the change
+  ask voters [calculate-preferred-change-NGA]
+  let ave-votes-x mean [x-vote] of voters
+  let ave-votes-y mean [y-vote] of voters
 
   ; Increment by step size
-  let last-x [xcor] of social-policy-vector  ; JACOB: you don't need these
-  let last-y [ycor] of social-policy-vector
   ask social-policy-vector
   [
-    set xcor xcor + total-x-utility * step-size
-    set ycor ycor + total-y-utility * step-size
+    set xcor xcor + ave-votes-x * step-size
+    set ycor ycor + ave-votes-y * step-size
   ]
-  set change-of-x [xcor] of social-policy-vector - last-x ; JACOB: change-of-x is just total-x-utility * step-size. Also, this only gets used by strategic voters, so call it last-change-of-x
-  set change-of-y [ycor] of social-policy-vector - last-y
+  ; Save last change
+  set change-of-x ave-votes-x * step-size
+  set change-of-y ave-votes-y * step-size
   set last-step-size step-size
   tick
 end
 
-to influence
-  create-links-to voters with [distance myself < [radius] of myself]
-  ask links [set color yellow]
-  ask links with [link-length > [radius] of myself] [die]
-  ask link-neighbors [
-    (ifelse ;; JACOB: add comments to explain what these different influencer types are.
-      [influence-type] of myself = "Attractor"
-      [
-        face myself
-        forward distance myself * influencer-strength
-      ]
-      [influence-type] of myself = "Taboo"
-      [
-        face myself
-        rt 180
-        if [radius] of myself - distance myself > 0
-        [forward ([radius] of myself - distance myself) * influencer-strength + .5]
-      ]
-      [influence-type] of myself = "Extremist"
-      [
-        face patch 0 0
-        rt 180
-        forward influencer-strength * (sqrt(max-pxcor ^ 2 + max-pycor ^ 2) - distance patch 0 0)
-      ]
-      [influence-type] of myself = "Centrist"
-      [
-        face patch 0 0
-        forward influencer-strength * distance patch 0 0
-      ]
-    )
-  ]
-end
-
 to vote-1p1v
+  ; Have influencers change the opinion of the voters, to more align with them
+  ask influencers [influence]
+
+  ; Ask voters to vote in the direction of the sign of their utility
   let total-x-votes 0
   let total-y-votes 0
-  let social-policy-vector one-of turtles with [color = green and shape = "triangle"]
   ask voters [
     set total-x-votes total-x-votes + ifelse-value xcor != 0  [xcor / abs xcor] [0]
     set total-y-votes total-y-votes + ifelse-value ycor != 0  [ycor / abs ycor] [0]
   ]
+  ; Change soc
   ask social-policy-vector
   [
     set xcor (ifelse-value total-y-votes = 0 [0] abs total-x-votes > max-pxcor [max-pxcor * total-x-votes / abs total-x-votes] [total-x-votes])
@@ -151,39 +94,83 @@ to vote-1p1v
   tick
 end
 
-to-report preferred-x [social-policy-vector]   ;; JACOB: Isn't this preferred change in x? If so, make the name reflect that (and likewise for preferred-y)
+to calculate-preferred-change-NGA
+  ; Save last vote
+  set last-x-vote x-vote
+  set last-y-vote y-vote
+
+  ; Add the voters preferred change to the overall change
+  set x-vote preferred-x-change
+  set y-vote preferred-y-change
+
+  ; If the length of the preference vector is greater than the radius of the unit circle
+  ; shorten it's length to the unit circle radius
+  if (x-vote ^ 2 + y-vote ^ 2 > max-pxcor ^ 2)
+  [
+    set x-vote x-vote / sqrt (x-vote ^ 2 + y-vote ^ 2) * max-pxcor
+    set y-vote y-vote / sqrt (x-vote ^ 2 + y-vote ^ 2) * max-pxcor
+  ]
+end
+
+;; Calculated the preferred change of x, strategically and truthfully
+to-report preferred-x-change
   ifelse strategic? and ticks != 0
   [report xcor - ([xcor] of social-policy-vector + change-of-x - last-x-vote * last-step-size / count voters )]
   [report xcor - [xcor] of social-policy-vector]
 end
 
-to-report preferred-y [social-policy-vector]
+;; Calculated the preferred change of y, strategically and truthfully
+to-report preferred-y-change
   ifelse strategic? and ticks != 0
   [report ycor - ([ycor] of social-policy-vector + change-of-y - last-y-vote * last-step-size / count voters)]
   [report ycor - [ycor] of social-policy-vector]
 end
 
-to-report total-utility-gain
-  let utility 0
-  if ticks != 0[
-    ; social policy vector
-    let sp-vector-x  one-of [xcor] of turtles with [color = green and shape = "triangle"]  ; JACOB: since you do this (one-of turtles with [color=green...) a lot, I would make the social-policy vector a global variable
-    let sp-vector-y  one-of [ycor] of turtles with [color = green and shape = "triangle"]
-    ask voters[
-      set utility utility + x-utility * sp-vector-x / abs sp-vector-x
-      set utility utility + y-utility * sp-vector-y / abs sp-vector-y
-    ]
+; influencer method, changes the perceived utility of voters in its radius
+to influence
+  ; Find new voters in its radius to influence, and stop influencing voters that are no longer is it's radius
+  create-links-to voters with [distance myself < [radius] of myself]
+  ask links [set color yellow]
+  ask links with [link-length > [radius] of myself][die]
+  ask link-neighbors [
+    (ifelse
+      ; Attractors will influence voters to perceive their utilities more similar to itself.
+      ; For example, this could be a 'fake news' distributor, which convinces ideologically similar people to take his stance on this issue
+      [influence-type] of myself = "Attractor" ;
+      [
+        face myself
+        forward distance myself * influencer-strength
+      ]
+      ; Taboo will influence voters to perceive their utilities to be different from itself.
+      ; For example, it is Taboo in some parts of America to deny climate change, even if climate change policies may damage your livelihood
+      [influence-type] of myself = "Taboo"
+      [
+        face myself
+        rt 180
+        if [radius] of myself - distance myself > 0
+        [forward ([radius] of myself - distance myself) * influencer-strength + .5]
+      ]
+      [influence-type] of myself = "Extremist"
+      ; Extremist will influence voters to exaggrate their perceived utilities.
+      ; This kind of Extremist pressure will occur in divided political climates
+      [
+        face patch 0 0
+        rt 180
+        forward influencer-strength * (sqrt(max-pxcor ^ 2 + max-pycor ^ 2) - distance patch 0 0)
+      ]
+      [influence-type] of myself = "Centrist"
+      ; Centrist will influence voters to under-represent their perceived utilities
+      ; Centrism will occur during times of economic growth, where the status quo is generally considered good
+      [
+        face patch 0 0
+        forward influencer-strength * distance patch 0 0
+      ]
+    )
   ]
-  report utility
 end
 
 to insert-influencers
-  if mouse-down? [
-    ; Wait for mouse to stop being down
-    while [mouse-down?][]
-    ; Add an influencer
     make-influencer mouse-xcor mouse-ycor
-  ]
 end
 
 to make-influencer [x y]
@@ -194,7 +181,7 @@ to make-influencer [x y]
     set radius influencer-radius
     ; Find voters nearby to connect with
     create-links-to voters with
-    [(xcor - [xcor] of myself) ^ 2 + (ycor - [ycor] of myself)^ 2 < influencer-radius ^ 2]
+    [distance myself < influencer-radius]
     [
       set color yellow
     ]
@@ -219,6 +206,27 @@ to make-influencer [x y]
       )
   ]
   ]
+end
+
+to-report total-utility-gain
+  let total-utility-x 0
+  let total-utility-y 0
+  if ticks != 0[
+    ; social policy vector
+    let sp-vector-x  [xcor] of social-policy-vector
+    let sp-vector-y  [ycor] of social-policy-vector
+    if sp-vector-x != 0[
+      ask voters[
+        set total-utility-x total-utility-x + x-utility * sp-vector-x / abs sp-vector-x
+      ]
+    ]
+    if sp-vector-y != 0[
+      ask voters[
+        set total-utility-y total-utility-y + y-utility * sp-vector-y / abs sp-vector-y
+      ]
+    ]
+  ]
+  report list total-utility-x total-utility-y
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
@@ -249,10 +257,10 @@ ticks
 30.0
 
 BUTTON
-98
-41
-161
-74
+0
+116
+95
+149
 Vote
 ifelse NGA? [vote-NGA][vote-1p1v]
 NIL
@@ -266,10 +274,10 @@ NIL
 1
 
 BUTTON
-27
-41
-91
-74
+53
+81
+138
+114
 Setup
 setup
 NIL
@@ -283,10 +291,10 @@ NIL
 1
 
 SLIDER
-28
-111
-200
-144
+0
+11
+203
+44
 number-of-voters
 number-of-voters
 1
@@ -298,25 +306,25 @@ NIL
 HORIZONTAL
 
 SLIDER
-29
-147
+0
+187
 201
-180
+220
 step-size
 step-size
 0
 1
-0.7
+1.0
 .05
 1
 NIL
 HORIZONTAL
 
 MONITOR
-30
-183
+0
+223
 90
-228
+268
 Utility
 total-utility-gain
 3
@@ -328,9 +336,9 @@ BUTTON
 11
 817
 44
-Enable Inserting Influencers
+Insert Influencer
 insert-influencers
-T
+NIL
 1
 T
 OBSERVER
@@ -349,7 +357,7 @@ influencer-radius
 influencer-radius
 0
 40
-40.0
+5.0
 1
 1
 NIL
@@ -357,11 +365,11 @@ HORIZONTAL
 
 MONITOR
 89
-183
+223
 202
-228
+268
 Current Policy Vector
-map [x -> precision x 2 ] (list one-of [xcor] of turtles with [color = green and shape = \"triangle\"] one-of [ycor] of turtles with [color = green and shape = \"triangle\"])
+map [x -> precision x 2 ] (one-of [list xcor ycor] of turtles with [color = green and shape = \"triangle\"])
 2
 1
 11
@@ -402,9 +410,9 @@ NIL
 
 SLIDER
 0
-229
+45
 203
-262
+78
 proportion-of-strategic-voters
 proportion-of-strategic-voters
 0
@@ -416,10 +424,10 @@ NIL
 HORIZONTAL
 
 BUTTON
-26
-76
-130
-109
+98
+116
+202
+149
 Vote Forever
 ifelse NGA? [vote-NGA][vote-1p1v]
 T
@@ -433,10 +441,10 @@ NIL
 1
 
 SWITCH
-64
-273
-167
-306
+0
+151
+95
+184
 NGA?
 NGA?
 0
@@ -444,10 +452,10 @@ NGA?
 -1000
 
 BUTTON
-96
-334
-198
-367
+98
+151
+200
+184
 Toggle NGA?
 set NGA? not NGA?
 NIL
@@ -483,7 +491,7 @@ CHOOSER
 Influencer-Type
 Influencer-Type
 "Attractor" "Taboo" "Extremist" "Centrist"
-3
+0
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -843,6 +851,81 @@ NetLogo 6.1.0
 @#$#@#$#@
 @#$#@#$#@
 @#$#@#$#@
+<experiments>
+  <experiment name="NGA-vs-1p1v" repetitions="1000" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>ifelse NGA? [vote-NGA][vote-1p1v]</go>
+    <timeLimit steps="1"/>
+    <metric>total-utility-gain</metric>
+    <metric>map [x -&gt; precision x 2 ] (one-of [list xcor ycor] of turtles with [color = green and shape = "triangle"])</metric>
+    <enumeratedValueSet variable="influencer-radius">
+      <value value="40"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="number-of-voters">
+      <value value="250"/>
+      <value value="500"/>
+      <value value="1000"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="step-size">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="proportion-of-strategic-voters">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Influencer-Type">
+      <value value="&quot;Centrist&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="NGA?">
+      <value value="true"/>
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="influencer-strength">
+      <value value="0.05"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="NGA-strategic" repetitions="1000" runMetricsEveryStep="true">
+    <setup>setup</setup>
+    <go>vote-NGA</go>
+    <timeLimit steps="10"/>
+    <metric>total-utility-gain</metric>
+    <metric>map [x -&gt; precision x 2 ] [list xcor ycor] of social-policy-vector</metric>
+    <steppedValueSet variable="step-size" first="0.05" step="0.05" last="1"/>
+    <enumeratedValueSet variable="number-of-voters">
+      <value value="50"/>
+      <value value="100"/>
+      <value value="250"/>
+      <value value="500"/>
+      <value value="1000"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="proportion-of-strategic-voters" first="0.05" step="0.05" last="1"/>
+  </experiment>
+  <experiment name="NGA-influenced" repetitions="10000" runMetricsEveryStep="false">
+    <setup>setup
+make-influencer ((random max-pxcor) - 2 * max-pxcor) ((random max-pycor) - 2 * max-pycor)</setup>
+    <go>ifelse NGA?[vote-NGA][vote-1p1v]</go>
+    <timeLimit steps="1"/>
+    <metric>total-utility-gain</metric>
+    <metric>map [x -&gt; precision x 2 ] [list xcor ycor] of οne-of turtles with [shape = "triangle"]</metric>
+    <steppedValueSet variable="influencer-radius" first="5" step="5" last="25"/>
+    <enumeratedValueSet variable="number-of-voters">
+      <value value="1000"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="step-size">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="proportion-of-strategic-voters">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Influencer-Type">
+      <value value="&quot;Attractor&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="NGA?">
+      <value value="true"/>
+      <value value="false"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="influencer-strength" first="0.05" step="0.05" last="1"/>
+  </experiment>
+</experiments>
 @#$#@#$#@
 @#$#@#$#@
 default
