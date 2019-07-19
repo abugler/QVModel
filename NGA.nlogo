@@ -85,7 +85,7 @@ to vote-1p1v
     set total-x-votes total-x-votes + ifelse-value xcor != 0  [xcor / abs xcor] [0]
     set total-y-votes total-y-votes + ifelse-value ycor != 0  [ycor / abs ycor] [0]
   ]
-  ; Change soc
+  ; Change social policy vector to reflect this
   ask social-policy-vector
   [
     set xcor (ifelse-value total-y-votes = 0 [0] abs total-x-votes > max-pxcor [max-pxcor * total-x-votes / abs total-x-votes] [total-x-votes])

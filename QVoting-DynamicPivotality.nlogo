@@ -476,7 +476,7 @@ variance-of-perceived-pivotality
 variance-of-perceived-pivotality
 0
 marginal-pivotality - marginal-pivotality ^ 2 - .001
-0.249
+0.046875
 .001
 1
 NIL
@@ -491,7 +491,7 @@ marginal-pivotality
 marginal-pivotality
 .05
 1
-0.5
+0.25
 .05
 1
 NIL
@@ -944,23 +944,8 @@ setup</setup>
     <metric>sum-of-votes</metric>
     <metric>sum-of-utilities</metric>
     <metric>payoff &gt;= 0</metric>
-    <enumeratedValueSet variable="number-of-voters">
-      <value value="1000"/>
-    </enumeratedValueSet>
     <steppedValueSet variable="marginal-pivotality" first="0.25" step="0.05" last="0.75"/>
-    <enumeratedValueSet variable="voice-credits-given-per-tick">
-      <value value="0"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="stdev-of-utilities">
-      <value value="5"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="limit-votes?">
-      <value value="false"/>
-    </enumeratedValueSet>
     <steppedValueSet variable="variance-of-perceived-pivotality" first="0.25" step="0.1" last="0.85"/>
-    <enumeratedValueSet variable="mean-of-utilities">
-      <value value="0"/>
-    </enumeratedValueSet>
   </experiment>
   <experiment name="normalized-p" repetitions="1000" runMetricsEveryStep="false">
     <setup>if marginal-pivotality = .25 or marginal-pivotality = .75
