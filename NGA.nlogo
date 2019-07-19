@@ -23,7 +23,7 @@ globals
 
 to setup
   clear-all
-
+  reset-ticks
   ; Create Unit Circle, containing varied opinions
   ask patches with [pxcor = 0 or pycor = 0 ] [set pcolor white]
   ask patches with [ abs (pxcor ^ 2 + pycor ^ 2 - max-pxcor ^ 2) < max-pxcor] [set pcolor red]
@@ -50,7 +50,6 @@ to setup
     ]
   ]
   set social-policy-vector one-of turtles with [color = green and shape = "triangle"]
-  reset-ticks
 end
 
 to vote-NGA
@@ -143,7 +142,7 @@ to influence
         forward distance myself * influencer-strength
       ]
       ; Taboo will influence voters to perceive their utilities to be different from itself.
-      ; For example, it in Taboo in some parts of America to deny climate change, even if climate change policies may damage your livelihood
+      ; For example, it is Taboo in some parts of America to deny climate change, even if climate change policies may damage your livelihood
       [influence-type] of myself = "Taboo"
       [
         face myself
@@ -210,23 +209,24 @@ to make-influencer [x y]
 end
 
 to-report total-utility-gain
-  let utility 0
+  let total-utility-x 0
+  let total-utility-y 0
   if ticks != 0[
     ; social policy vector
     let sp-vector-x  [xcor] of social-policy-vector
     let sp-vector-y  [ycor] of social-policy-vector
     if sp-vector-x != 0[
       ask voters[
-        set utility utility + x-utility * sp-vector-x / abs sp-vector-x
+        set total-utility-x total-utility-x + x-utility * sp-vector-x / abs sp-vector-x
       ]
     ]
     if sp-vector-y != 0[
       ask voters[
-        set utility utility + y-utility * sp-vector-y / abs sp-vector-y
+        set total-utility-y total-utility-y + y-utility * sp-vector-y / abs sp-vector-y
       ]
     ]
   ]
-  report utility
+  report list total-utility-x total-utility-y
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
@@ -299,7 +299,7 @@ number-of-voters
 number-of-voters
 1
 1000
-575.0
+1000.0
 1
 1
 NIL
@@ -314,7 +314,7 @@ step-size
 step-size
 0
 1
-0.9
+1.0
 .05
 1
 NIL
@@ -357,7 +357,7 @@ influencer-radius
 influencer-radius
 0
 40
-20.0
+5.0
 1
 1
 NIL
@@ -417,7 +417,7 @@ proportion-of-strategic-voters
 proportion-of-strategic-voters
 0
 1
-0.59
+0.0
 .01
 1
 NIL
@@ -477,7 +477,7 @@ influencer-strength
 influencer-strength
 0
 1
-0.58
+0.05
 .01
 1
 NIL
@@ -491,7 +491,7 @@ CHOOSER
 Influencer-Type
 Influencer-Type
 "Attractor" "Taboo" "Extremist" "Centrist"
-2
+0
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -882,6 +882,48 @@ NetLogo 6.1.0
     <enumeratedValueSet variable="influencer-strength">
       <value value="0.05"/>
     </enumeratedValueSet>
+  </experiment>
+  <experiment name="NGA-strategic" repetitions="1000" runMetricsEveryStep="true">
+    <setup>setup</setup>
+    <go>vote-NGA</go>
+    <timeLimit steps="10"/>
+    <metric>total-utility-gain</metric>
+    <metric>map [x -&gt; precision x 2 ] [list xcor ycor] of social-policy-vector</metric>
+    <steppedValueSet variable="step-size" first="0.05" step="0.05" last="1"/>
+    <enumeratedValueSet variable="number-of-voters">
+      <value value="50"/>
+      <value value="100"/>
+      <value value="250"/>
+      <value value="500"/>
+      <value value="1000"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="proportion-of-strategic-voters" first="0.05" step="0.05" last="1"/>
+  </experiment>
+  <experiment name="NGA-influenced" repetitions="10000" runMetricsEveryStep="false">
+    <setup>setup
+make-influencer ((random max-pxcor) - 2 * max-pxcor) ((random max-pycor) - 2 * max-pycor)</setup>
+    <go>ifelse NGA?[vote-NGA][vote-1p1v]</go>
+    <timeLimit steps="1"/>
+    <metric>total-utility-gain</metric>
+    <metric>map [x -&gt; precision x 2 ] [list xcor ycor] of οne-of turtles with [shape = "triangle"]</metric>
+    <steppedValueSet variable="influencer-radius" first="5" step="5" last="25"/>
+    <enumeratedValueSet variable="number-of-voters">
+      <value value="1000"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="step-size">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="proportion-of-strategic-voters">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Influencer-Type">
+      <value value="&quot;Attractor&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="NGA?">
+      <value value="true"/>
+      <value value="false"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="influencer-strength" first="0.05" step="0.05" last="1"/>
   </experiment>
 </experiments>
 @#$#@#$#@
