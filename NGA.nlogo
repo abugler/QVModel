@@ -68,7 +68,7 @@ to vote-NGA
     set ycor ycor + ave-votes-y * step-size
   ]
   ; Save last change
-  set change-of-x ave-votes-x * step-size
+  set change-of-x ave-votes-x * step-size  ;; JACOB: call these last-x-change and last-y-change if that is what they are
   set change-of-y ave-votes-y * step-size
   set last-step-size step-size
   tick
@@ -82,13 +82,13 @@ to vote-1p1v
   let total-x-votes 0
   let total-y-votes 0
   ask voters [
-    set total-x-votes total-x-votes + ifelse-value xcor != 0  [xcor / abs xcor] [0]
+    set total-x-votes total-x-votes + ifelse-value xcor != 0  [xcor / abs xcor] [0]  ;; JACOB: You are getting the sign of a number a few times in this function. I'd make a sign function that takes a number and outputs +1 or -1
     set total-y-votes total-y-votes + ifelse-value ycor != 0  [ycor / abs ycor] [0]
   ]
   ; Change soc
   ask social-policy-vector
   [
-    set xcor (ifelse-value total-y-votes = 0 [0] abs total-x-votes > max-pxcor [max-pxcor * total-x-votes / abs total-x-votes] [total-x-votes])
+    set xcor (ifelse-value total-y-votes = 0 [0] abs total-x-votes > max-pxcor [max-pxcor * total-x-votes / abs total-x-votes] [total-x-votes]) ;; JACOB: I think a three way conditional is too much for one line.
     set ycor (ifelse-value total-x-votes = 0 [0] abs total-y-votes > max-pycor [max-pycor * total-y-votes / abs total-y-votes] [total-y-votes])
   ]
   tick
@@ -107,7 +107,7 @@ to calculate-preferred-change-NGA
   ; shorten it's length to the unit circle radius
   if (x-vote ^ 2 + y-vote ^ 2 > max-pxcor ^ 2)
   [
-    set x-vote x-vote / sqrt (x-vote ^ 2 + y-vote ^ 2) * max-pxcor
+    set x-vote x-vote / sqrt (x-vote ^ 2 + y-vote ^ 2) * max-pxcor  ;; JACOB: You calculate the distnace of a point from the origin a few times. I would write a procedure for that. Use it on the if statement one line above also.
     set y-vote y-vote / sqrt (x-vote ^ 2 + y-vote ^ 2) * max-pxcor
   ]
 end
@@ -127,7 +127,7 @@ to-report preferred-y-change
 end
 
 ; influencer method, changes the perceived utility of voters in its radius
-to influence
+to influence  ;; JACOB: right now if you delete influencers, the chang in percieved utility persists. I think we should make it so people will drift back towards their innate utilities when influencers disappear.
   ; Find new voters in its radius to influence, and stop influencing voters that are no longer is it's radius
   create-links-to voters with [distance myself < [radius] of myself]
   ask links [set color yellow]
@@ -147,7 +147,7 @@ to influence
       [
         face myself
         rt 180
-        if [radius] of myself - distance myself > 0
+        if [radius] of myself - distance myself > 0  ;; JACOB: I think this would be clearer: if distance myself < [radius] myself.
         [forward ([radius] of myself - distance myself) * influencer-strength + .5]
       ]
       [influence-type] of myself = "Extremist"
@@ -156,7 +156,7 @@ to influence
       [
         face patch 0 0
         rt 180
-        forward influencer-strength * (sqrt(max-pxcor ^ 2 + max-pycor ^ 2) - distance patch 0 0)
+        forward influencer-strength * (sqrt(max-pxcor ^ 2 + max-pycor ^ 2) - distance patch 0 0)  ;
       ]
       [influence-type] of myself = "Centrist"
       ; Centrist will influence voters to under-represent their perceived utilities
@@ -195,14 +195,11 @@ to make-influencer [x y]
       face myself
     ]
       set influence-type Influencer-type
-      (ifelse influence-type = "Attractor"
-        [set color cyan]
-        influence-type = "Taboo"
-        [set color orange]
-        influence-type = "Extremist"
-        [set color magenta]
-        influence-type = "Centrist"
-        [set color grey]
+      (ifelse
+        influence-type = "Attractor" [set color cyan]
+        influence-type = "Taboo" [set color orange]
+        influence-type = "Extremist" [set color magenta]
+        influence-type = "Centrist" [set color grey]
       )
   ]
   ]
@@ -227,6 +224,14 @@ to-report total-utility-gain
     ]
   ]
   report list total-utility-x total-utility-y
+end
+
+to delete-voters
+  if mouse-down? [
+    ask patch mouse-xcor mouse-ycor [
+      ask turtles in-radius 2 [die]
+    ]
+  ]
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
@@ -357,7 +362,7 @@ influencer-radius
 influencer-radius
 0
 40
-5.0
+20.0
 1
 1
 NIL
@@ -491,7 +496,24 @@ CHOOSER
 Influencer-Type
 Influencer-Type
 "Attractor" "Taboo" "Extremist" "Centrist"
-0
+2
+
+BUTTON
+637
+211
+751
+244
+NIL
+delete-voters
+T
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
 
 @#$#@#$#@
 ## WHAT IS IT?
