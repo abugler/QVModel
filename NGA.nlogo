@@ -319,7 +319,7 @@ step-size
 step-size
 0
 1
-1.0
+0.9
 .05
 1
 NIL
@@ -422,7 +422,7 @@ proportion-of-strategic-voters
 proportion-of-strategic-voters
 0
 1
-1.0
+0.6
 .01
 1
 NIL
@@ -482,7 +482,7 @@ influencer-strength
 influencer-strength
 0
 1
-0.05
+0.03
 .01
 1
 NIL
@@ -921,14 +921,14 @@ NetLogo 6.1.0
     </enumeratedValueSet>
     <steppedValueSet variable="proportion-of-strategic-voters" first="0.05" step="0.05" last="1"/>
   </experiment>
-  <experiment name="NGA-influenced" repetitions="10000" runMetricsEveryStep="false">
+  <experiment name="NGA-influenced" repetitions="1000" runMetricsEveryStep="false">
     <setup>setup
 make-influencer ((random max-pxcor) - 2 * max-pxcor) ((random max-pycor) - 2 * max-pycor)</setup>
     <go>ifelse NGA?[vote-NGA][vote-1p1v]</go>
     <timeLimit steps="1"/>
     <metric>total-utility-gain</metric>
     <metric>map [x -&gt; precision x 2 ] [list xcor ycor] of οne-of turtles with [shape = "triangle"]</metric>
-    <steppedValueSet variable="influencer-radius" first="5" step="5" last="25"/>
+    <steppedValueSet variable="influencer-radius" first="20" step="5" last="40"/>
     <enumeratedValueSet variable="number-of-voters">
       <value value="1000"/>
     </enumeratedValueSet>
@@ -945,7 +945,7 @@ make-influencer ((random max-pxcor) - 2 * max-pxcor) ((random max-pycor) - 2 * m
       <value value="true"/>
       <value value="false"/>
     </enumeratedValueSet>
-    <steppedValueSet variable="influencer-strength" first="0.05" step="0.05" last="1"/>
+    <steppedValueSet variable="influencer-strength" first="0.1" step="0.1" last="1"/>
   </experiment>
 </experiments>
 @#$#@#$#@
