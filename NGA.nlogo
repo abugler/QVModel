@@ -19,6 +19,7 @@ globals
   change-of-y
   last-step-size
   social-policy-vector
+  last-three-runs-acceptable
 ]
 
 to setup
@@ -50,11 +51,13 @@ to setup
     ]
   ]
   set social-policy-vector one-of turtles with [color = green and shape = "triangle"]
+  set last-three-runs-acceptable (list)
 end
 
 to vote-NGA
   ; Have influencers change the opinion of the voters, to more align with them
   ask influencers [influence]
+  return-to-true-utility
 
   ; Have voters calculate their preferred change in the SP vector, and take the averages of all the change
   ask voters [calculate-preferred-change-NGA]
@@ -68,9 +71,14 @@ to vote-NGA
     set ycor ycor + ave-votes-y * step-size
   ]
   ; Save last change
-  set change-of-x ave-votes-x * step-size  ;; JACOB: call these last-x-change and last-y-change if that is what they are
+  set change-of-x ave-votes-x * step-size
   set change-of-y ave-votes-y * step-size
   set last-step-size step-size
+
+  ; Bookkeeping for BS experiment
+  set last-three-runs-acceptable fput acceptable? last-three-runs-acceptable
+  if ticks > 2 [set last-three-runs-acceptable remove-item 3 last-three-runs-acceptable]
+
   tick
 end
 
@@ -127,7 +135,7 @@ to-report preferred-y-change
 end
 
 ; influencer method, changes the perceived utility of voters in its radius
-to influence  ;; JACOB: right now if you delete influencers, the chang in percieved utility persists. I think we should make it so people will drift back towards their innate utilities when influencers disappear.
+to influence
   ; Find new voters in its radius to influence, and stop influencing voters that are no longer is it's radius
   create-links-to voters with [distance myself < [radius] of myself]
   ask links [set color yellow]
@@ -156,7 +164,7 @@ to influence  ;; JACOB: right now if you delete influencers, the chang in percie
       [
         face patch 0 0
         rt 180
-        forward influencer-strength * (sqrt(max-pxcor ^ 2 + max-pycor ^ 2) - distance patch 0 0)  ;
+        forward influencer-strength * (sqrt(max-pxcor ^ 2 + max-pycor ^ 2) - distance patch 0 0)
       ]
       [influence-type] of myself = "Centrist"
       ; Centrist will influence voters to under-represent their perceived utilities
@@ -165,6 +173,20 @@ to influence  ;; JACOB: right now if you delete influencers, the chang in percie
         face patch 0 0
         forward influencer-strength * distance patch 0 0
       ]
+    )
+  ]
+end
+
+to return-to-true-utility
+  ask voters with [count link-neighbors = 0][
+    let true-utility patch x-utility y-utility
+    face true-utility
+    forward .5 * distance true-utility
+    (ifelse (abs(x-utility - xcor)  > .01 and abs(y-utility - ycor)  > .01)
+    [set color red]
+      strategic?
+      [set color pink]
+      [set color violet]
     )
   ]
 end
@@ -232,6 +254,20 @@ to delete-voters
       ask voters in-radius 2 [die]
     ]
   ]
+end
+
+;;;;;;;; These two methods are for monitoring behavior space experiments!
+;;;;;;;; Specificially, they are looking for the optimal step size for an acceptable outcome.
+;;;;;;;; To be considered acceptable, the SP vector must be within 95% of the distance from the origin
+to-report acceptable?
+  let SPV social-policy-vector
+  let desired-SPV-x mean [x-utility] of voters
+  let desired-SPV-y mean [y-utility] of voters
+  report (desired-SPV-x - [xcor] of SPV) ^ 2 + (desired-SPV-y - [ycor] of SPV) ^ 2 < .05 * sqrt ([xcor] of SPV ^ 2 + [ycor] of SPV ^ 2)
+end
+
+to-report last-three-acceptable?
+  report (not member? false last-three-runs-acceptable) and (length last-three-runs-acceptable = 3)
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
@@ -362,7 +398,7 @@ influencer-radius
 influencer-radius
 0
 40
-20.0
+40.0
 1
 1
 NIL
@@ -482,7 +518,7 @@ influencer-strength
 influencer-strength
 0
 1
-0.05
+0.49
 .01
 1
 NIL
@@ -496,7 +532,7 @@ CHOOSER
 Influencer-Type
 Influencer-Type
 "Attractor" "Taboo" "Extremist" "Centrist"
-2
+3
 
 BUTTON
 637
@@ -514,6 +550,17 @@ E
 NIL
 NIL
 1
+
+MONITOR
+39
+299
+119
+344
+Acceptable?
+Acceptable?
+17
+1
+11
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -874,35 +921,21 @@ NetLogo 6.1.0
 @#$#@#$#@
 @#$#@#$#@
 <experiments>
-  <experiment name="NGA-vs-1p1v" repetitions="1000" runMetricsEveryStep="false">
+  <experiment name="NGA-optimal-step" repetitions="1000" runMetricsEveryStep="false">
     <setup>setup</setup>
     <go>ifelse NGA? [vote-NGA][vote-1p1v]</go>
-    <timeLimit steps="1"/>
+    <timeLimit steps="100"/>
+    <exitCondition>last-three-acceptable?</exitCondition>
     <metric>total-utility-gain</metric>
-    <metric>map [x -&gt; precision x 2 ] (one-of [list xcor ycor] of turtles with [color = green and shape = "triangle"])</metric>
-    <enumeratedValueSet variable="influencer-radius">
-      <value value="40"/>
-    </enumeratedValueSet>
+    <metric>[list xcor ycor] of social-policy-vector</metric>
+    <metric>ticks</metric>
     <enumeratedValueSet variable="number-of-voters">
-      <value value="250"/>
-      <value value="500"/>
       <value value="1000"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="step-size">
-      <value value="1"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="proportion-of-strategic-voters">
-      <value value="0"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Influencer-Type">
-      <value value="&quot;Centrist&quot;"/>
-    </enumeratedValueSet>
+    <steppedValueSet variable="step-size" first="0.05" step="0.05" last="0.95"/>
+    <steppedValueSet variable="proportion-of-strategic-voters" first="0.25" step="0.05" last="0.75"/>
     <enumeratedValueSet variable="NGA?">
       <value value="true"/>
-      <value value="false"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="influencer-strength">
-      <value value="0.05"/>
     </enumeratedValueSet>
   </experiment>
   <experiment name="NGA-strategic" repetitions="1000" runMetricsEveryStep="true">
