@@ -75,11 +75,16 @@ to vote-QV
     set counted-in-last-poll? true
   ]
 
-  let index 0
-  repeat length social-policy-vector [
-    set social-policy-vector replace-item index social-policy-vector sum [item index votes] of voters
-    set index index + 1
-  ]
+  ; sets social policy vector to be equal to the element-wise sum of all voting vectors
+
+  set social-policy-vector n-values number-of-issues [0]
+  set social-policy-vector map [a -> (map [[b c] -> b + c] a social-policy-vector)] [votes] of voters
+
+;  let index 0
+;  repeat length social-policy-vector [
+;    set social-policy-vector replace-item index social-policy-vector sum [item index votes] of voters
+;    set index index + 1
+;  ]
 
   refresh
   set poll nobody
@@ -88,11 +93,15 @@ end
 to vote-1p1v
   tick
   let index 0
-  repeat length social-policy-vector [
-    ; This normalizes the utilities of all voters to either 1 or -1, and then sums them together
-    set social-policy-vector replace-item index social-policy-vector sum [item index utilities / abs item index utilities] of voters
-    set index index + 1
-  ]
+
+  set social-policy-vector n-values number-of-issues [0]
+  set social-policy-vector map [a -> (map [[b c] -> (b / abs b) + c] a social-policy-vector)] [utilities] of voters
+
+;  repeat length social-policy-vector [
+;    ; This normalizes the utilities of all voters to either 1 or -1, and then sums them together
+;    set social-policy-vector replace-item index social-policy-vector sum [item index utilities / abs item index utilities] of voters
+;    set index index + 1
+;  ]
   refresh
 end
 
@@ -146,6 +155,9 @@ to vote-strategic
       set i i + 1
     ]
   ]
+
+  ; Calculate number of votes by using the polling data to guess the marginal pivotality
+  ; See "Calculating pivotality from polling" in Notion for more details
   let index 0
   while [index < length votes][
     set votes replace-item index votes (.5 * psi-prime(item index estimated-outcome) * item index utilities)
@@ -155,7 +167,7 @@ to vote-strategic
   set votes map [x -> x / sqrt sum-of-votes^2] votes
 end
 
-; Derivative of the payoff function
+; Derivative of the payoff function. See
 to-report psi-prime[x]
   let delta 1
   let b 4
@@ -168,12 +180,14 @@ to take-poll
     vote-truthful
     set counted-in-last-poll? true
   ]
-  set poll social-policy-vector
-  let index 0
-  repeat length poll [
-    set poll replace-item index poll sum [item index votes] of polled-agentset
-    set index index + 1
-  ]
+  set poll n-values number-of-issues [0]
+  set social-policy-vector map [a -> (map [[b c] -> b + c] a social-policy-vector)] [votes] of polled-agentset
+
+;  let index 0
+;  repeat length poll [
+;    set poll replace-item index poll sum [item index votes] of polled-agentset
+;    set index index + 1
+;  ]
   refresh
 end
 
@@ -867,15 +881,6 @@ Polygon -7500403 true true 30 75 75 30 270 225 225 270
 NetLogo 6.1.0
 @#$#@#$#@
 @#$#@#$#@
-1.0
-    org.nlogo.sdm.gui.AggregateDrawing 3
-        org.nlogo.sdm.gui.StockFigure "attributes" "attributes" 1 "FillColor" "Color" 225 225 182 169 62 60 40
-            org.nlogo.sdm.gui.WrappedStock "" "" 0
-        org.nlogo.sdm.gui.ConverterFigure "attributes" "attributes" 1 "FillColor" "Color" 130 188 183 389 84 50 50
-            org.nlogo.sdm.gui.WrappedConverter "" ""
-        org.nlogo.sdm.gui.BindingConnection 2 241 87 391 106 NULL NULL 0 0 0
-            org.jhotdraw.standard.ChopBoxConnector REF 1
-            org.jhotdraw.contrib.ChopDiamondConnector REF 3
 @#$#@#$#@
 <experiments>
   <experiment name="NGA-vs-1p1v" repetitions="1000" runMetricsEveryStep="false">
