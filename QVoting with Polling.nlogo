@@ -210,6 +210,8 @@ to-report total-utility-gain
   report total-utility
 end
 
+
+
 ; Function for deleting voters
 to delete-voters
     ask patch mouse-xcor mouse-ycor [
@@ -268,7 +270,7 @@ proportion-of-strategic-voters
 proportion-of-strategic-voters
 0
 1
-1.0
+0.1
 .01
 1
 NIL
@@ -396,7 +398,7 @@ poll-response-rate
 poll-response-rate
 0
 1
-1.0
+0.1
 .01
 1
 NIL
@@ -873,10 +875,12 @@ NetLogo 6.1.0
 <experiments>
   <experiment name="PRR-and-PSV" repetitions="1000" runMetricsEveryStep="false">
     <setup>setup</setup>
-    <go>vote-QV</go>
+    <go>take-poll
+vote-QV</go>
     <timeLimit steps="1"/>
     <metric>total-utility-gain</metric>
     <metric>social-policy-vector</metric>
+    <metric>poll</metric>
     <enumeratedValueSet variable="number-of-voters">
       <value value="1000"/>
     </enumeratedValueSet>
