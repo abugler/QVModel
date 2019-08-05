@@ -353,7 +353,7 @@ proportion-of-strategic-voters
 proportion-of-strategic-voters
 0
 1
-0.0
+0.82
 .01
 1
 NIL
@@ -1030,39 +1030,28 @@ vote-QV</go>
       <value value="1"/>
     </enumeratedValueSet>
   </experiment>
-  <experiment name="does-polling-converge" repetitions="1000" runMetricsEveryStep="false">
-    <setup>setup
-set results (list)</setup>
-    <go>take-poll
-vote-QV
-store-outcome</go>
-    <timeLimit steps="100"/>
+  <experiment name="does-polling-converge" repetitions="500" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>take-poll</go>
+    <timeLimit steps="50"/>
     <exitCondition>has-converged?</exitCondition>
-    <metric>social-policy-vector</metric>
+    <metric>poll</metric>
     <metric>total-utility-gain</metric>
     <metric>maximal-utility?</metric>
-    <metric>has-converged?</metric>
     <enumeratedValueSet variable="number-of-voters">
       <value value="1500"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="proportion-of-strategic-voters">
-      <value value="1"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="poll-memory">
-      <value value="1"/>
-      <value value="[10 10 50]"/>
-    </enumeratedValueSet>
+    <steppedValueSet variable="proportion-of-strategic-voters" first="0.1" step="0.2" last="0.9"/>
     <enumeratedValueSet variable="number-of-issues">
       <value value="2"/>
+      <value value="5"/>
+      <value value="10"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="poll-response-rate">
       <value value="1"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="utility-distribution">
       <value value="&quot;Normal mean = 0&quot;"/>
-      <value value="&quot;Normal mean != 0&quot;"/>
-      <value value="&quot;Bimodal one direction&quot;"/>
-      <value value="&quot;Bimodal all directions&quot;"/>
     </enumeratedValueSet>
   </experiment>
   <experiment name="minority-vs-majority" repetitions="2000" runMetricsEveryStep="false">
