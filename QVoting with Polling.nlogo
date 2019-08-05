@@ -9,7 +9,7 @@ voters-own[
 globals[
   social-policy-vector
   social-policy-turtle
-  polls
+  poll
   results
   poll-turtle
   voice-credits
@@ -46,7 +46,7 @@ to setup
     ]
   ]
   set voice-credits 1
-  set polls (list)
+  set poll nobody
   refresh
 end
 
@@ -121,7 +121,7 @@ to refresh
     set ycor item y-axis utilities * max-pycor
   ]
   ask poll-turtle[
-    ifelse length polls > 0
+    ifelse poll != nobody
     [set hidden? false
       move-to poll-patch]
     [set hidden? true]
@@ -166,7 +166,7 @@ end
 to calculate-preferred-votes-QV
   ; If the agent is strategic, the agent will take the information from the last poll, and make a decision based off it.
   ; The utility based vote is used in the calculation, so first that must be calculated.
-  ifelse strategic? and length polls > 0 and votes != 0
+  ifelse strategic? and poll != nobody and votes != 0
   [
     vote-strategic
   ]
@@ -188,7 +188,6 @@ end
 
 ; reports the patch that poll turtle should be on, based of the last poll
 to-report poll-patch
-  let poll first polls
   report patch
   ifelse-value (abs item x-axis poll) < max-pxcor [item x-axis poll] [(max-pxcor - 1) / item x-axis poll * abs item x-axis poll]
   ifelse-value (abs item y-axis poll) < max-pxcor [item y-axis poll] [(max-pycor - 1) / item y-axis poll * abs item y-axis poll]
@@ -201,10 +200,7 @@ to vote-truthful
 end
 
 to vote-strategic
-  let estimated-outcome n-values length social-policy-vector [0]
-  foreach polls [poll -> set estimated-outcome (map [[p e-o] -> p + e-o] poll estimated-outcome)]
-
-  set estimated-outcome map [e-o -> e-o / length polls] estimated-outcome
+  let estimated-outcome poll
 
   ; If the agent was not counted in the last poll, add its votes to the poll
   if not counted-in-last-poll? [
@@ -246,17 +242,15 @@ to take-poll
     calculate-preferred-votes-QV
     set counted-in-last-poll? true
   ]
-  let poll n-values length social-policy-vector [0]
+  set poll n-values length social-policy-vector [0]
   foreach [votes] of polled-agentset [a -> set poll (map [[b c] -> b + c] a poll)]
-  set polls fput poll polls
-  if (length polls > poll-memory)[set polls but-last polls]
   refresh
 end
 
 ; Reporter for monitor
 to-report poll-results
-  ifelse length polls > 0
-  [report map [x -> precision x 2] first polls]
+  ifelse poll != nobody
+  [report map [x -> precision x 2] poll]
   [report "NO POLL ACTIVE"]
 end
 
@@ -359,7 +353,7 @@ proportion-of-strategic-voters
 proportion-of-strategic-voters
 0
 1
-1.0
+0.0
 .01
 1
 NIL
@@ -374,7 +368,7 @@ number-of-issues
 number-of-issues
 2
 10
-2.0
+10.0
 1
 1
 NIL
@@ -577,7 +571,7 @@ BUTTON
 945
 289
 Clear Poll
-set polls (list)\nask voters[\n    set counted-in-last-poll? false\n  ]
+set poll nobody\nask voters[\n    set counted-in-last-poll? false\n  ]
 NIL
 1
 T
@@ -634,7 +628,7 @@ minority-power
 minority-power
 0
 100
-30.0
+100.0
 10
 1
 NIL
@@ -643,28 +637,13 @@ HORIZONTAL
 MONITOR
 0
 452
-238
+241
 497
 Utility Gain
 map [x -> precision x 2] total-utility-gain
 2
 1
 11
-
-SLIDER
-772
-380
-944
-413
-poll-memory
-poll-memory
-1
-50
-1.0
-1
-1
-NIL
-HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
