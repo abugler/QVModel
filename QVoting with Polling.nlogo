@@ -59,7 +59,7 @@ to spawn-voters
     set color violet
     set strategic? random-float 1 < proportion-of-strategic-voters
     ifelse strategic? [
-      set color pink
+      set color 115 + 20 * vote-portion-strategic
     ][set color violet]
     set-utilities
   ]
@@ -85,30 +85,27 @@ end
 
 to set-utilities
   (ifelse utility-distribution = "Normal mean = 0" [
-        set utilities n-values number-of-issues [random-normal 0 .2]
+    set utilities n-values number-of-issues [random-normal 0 .2]
     ]
-      utility-distribution = "Normal mean != 0" [
-        set utilities n-values number-of-issues [random-normal .2 .2]
+    utility-distribution = "Normal mean != 0" [
+      set utilities n-values number-of-issues [random-normal .2 .2]
+    ]
+    utility-distribution = "Bimodal one direction"[
+      set utilities n-values (number-of-issues - 1) [random-normal 0 .2]
+      ifelse random-float  1 > .5 [
+        set utilities fput random-normal .3 .1 utilities
+      ][
+        set utilities fput random-normal -.3 .1 utilities
       ]
-      utility-distribution = "Normal mean != 0" [
-        set utilities n-values number-of-issues [random-normal .2 .2]
+    ]
+    utility-distribution = "Bimodal all directions"[
+      ifelse random-float 1 > .5[
+        set utilities n-values number-of-issues [random-normal .3 .1]
+      ][
+        set utilities n-values number-of-issues [random-normal -.3 .1]
       ]
-      utility-distribution = "Bimodal one direction"[
-        set utilities n-values (number-of-issues - 1) [random-normal 0 .2]
-        ifelse random-float  1 > .5 [
-          set utilities fput random-normal .3 .1 utilities
-        ][
-          set utilities fput random-normal -.3 .1 utilities
-        ]
-      ]
-      utility-distribution = "Bimodal all directions"[
-        ifelse random-float 1 > .5[
-          set utilities n-values number-of-issues [random-normal .3 .1]
-        ][
-          set utilities n-values number-of-issues [random-normal -.3 .1]
-        ]
-      ]
-    )
+    ]
+  )
 end
 
 ; Moves voters and poll to their locations based of their utilities and poll results, respectively
@@ -140,9 +137,7 @@ end
 ; Called by the Vote Button, executes the voting procedure for QV
 to vote-QV
   tick
-  ask voters [
-    calculate-preferred-votes-QV
-  ]
+  ask voters [calculate-preferred-votes-QV]
 
   ; sets social policy vector to be equal to the sum of all voting vectors
   set social-policy-vector n-values length social-policy-vector [0]
@@ -218,8 +213,20 @@ to vote-strategic
   ; When this occurs, the voter should vote based on his utilities, knowing that either way, his vote will most likely not matter.
   ; Since votes do not carry over between elections in this scenario, the voter has no reason to not vote.
   ifelse sum-of-votes^2 != 0
-  [set votes map [x -> x / sqrt sum-of-votes^2 * voice-credits] votes]
-  [vote-truthful]
+  [
+    ; Normalize Strategic Votes to 1
+    let strategic-votes map [x -> x / sqrt sum-of-votes^2 * voice-credits] votes
+    ; Alias vote-portion-strategic to a
+    let a vote-portion-strategic
+    vote-truthful
+    ; The votes vector cast is a combination of strategic votes and truthful votes.
+    ; a denotes the portion of the vote that shall be strategic.
+    set votes (map [[v-t v-s] -> a * v-s + (1 - a) * v-t] votes strategic-votes)
+    set votes map [x -> x / sqrt sum map [v -> v ^ 2] votes] votes
+  ]
+  [
+    vote-truthful
+  ]
 end
 
 ; Derivative of the payoff function. See "Calculating pivotality from polling" in Notion for more details
@@ -331,9 +338,9 @@ ticks
 
 SLIDER
 0
-13
-218
-46
+15
+219
+48
 number-of-voters
 number-of-voters
 0
@@ -347,13 +354,13 @@ HORIZONTAL
 SLIDER
 0
 48
-217
+219
 81
 proportion-of-strategic-voters
 proportion-of-strategic-voters
 0
 1
-0.82
+0.72
 .01
 1
 NIL
@@ -361,14 +368,14 @@ HORIZONTAL
 
 SLIDER
 0
-84
+114
 219
-117
+147
 number-of-issues
 number-of-issues
 2
 10
-10.0
+2.0
 1
 1
 NIL
@@ -376,9 +383,9 @@ HORIZONTAL
 
 BUTTON
 0
-198
+228
 102
-250
+280
 Setup
 setup\n
 NIL
@@ -393,9 +400,9 @@ NIL
 
 BUTTON
 0
-251
+281
 218
-285
+315
 Vote!
 ifelse QV? [vote-QV][vote-1p1v]
 NIL
@@ -410,9 +417,9 @@ NIL
 
 BUTTON
 104
-198
+228
 219
-250
+280
 Refresh
 refresh\n
 NIL
@@ -489,9 +496,9 @@ HORIZONTAL
 
 SWITCH
 0
-286
+316
 103
-319
+349
 QV?
 QV?
 0
@@ -500,9 +507,9 @@ QV?
 
 BUTTON
 105
-286
+316
 218
-320
+350
 Toggle QV?
 set QV? not QV?
 NIL
@@ -517,9 +524,9 @@ NIL
 
 BUTTON
 0
-320
+350
 218
-354
+384
 Poll and Vote
 take-poll\nifelse QV? [vote-QV][vote-1p1v]
 NIL
@@ -534,9 +541,9 @@ NIL
 
 MONITOR
 0
-406
+436
 238
-451
+481
 Social Policy Vector
 map [x -> precision x 2]social-policy-vector
 2
@@ -556,9 +563,9 @@ poll-results
 
 MONITOR
 0
-358
+388
 98
-403
+433
 Maximal Utility?
 maximal-utility?
 17
@@ -601,13 +608,13 @@ NIL
 
 CHOOSER
 0
-118
+148
 243
-163
+193
 utility-distribution
 utility-distribution
 "Normal mean = 0" "Normal mean != 0" "Bimodal one direction" "Bimodal all directions" "Indifferent Majority vs. Passionate Minority"
-0
+4
 
 TEXTBOX
 784
@@ -621,9 +628,9 @@ The yellow star represents the polling vector.\nThe green \nstar represents the 
 
 SLIDER
 0
-164
+194
 218
-197
+227
 minority-power
 minority-power
 0
@@ -636,14 +643,29 @@ HORIZONTAL
 
 MONITOR
 0
-452
+482
 241
-497
+527
 Utility Gain
 map [x -> precision x 2] total-utility-gain
 2
 1
 11
+
+SLIDER
+0
+81
+219
+114
+vote-portion-strategic
+vote-portion-strategic
+0
+1
+0.38
+.01
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -1082,6 +1104,36 @@ vote-QV</go>
     </enumeratedValueSet>
     <enumeratedValueSet variable="utility-distribution">
       <value value="&quot;Indifferent Majority vs. Passionate Minority&quot;"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="converge-portion-of-strategic-vote" repetitions="500" runMetricsEveryStep="true">
+    <setup>setup</setup>
+    <go>take-poll
+set social-policy-vector poll</go>
+    <timeLimit steps="50"/>
+    <metric>poll</metric>
+    <metric>total-utility-gain</metric>
+    <steppedValueSet variable="vote-portion-strategic" first="0.1" step="0.2" last="0.9"/>
+    <enumeratedValueSet variable="number-of-voters">
+      <value value="1500"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="proportion-of-strategic-voters">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="QV?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="number-of-issues">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="poll-response-rate">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="utility-distribution">
+      <value value="&quot;Normal mean = 0&quot;"/>
+      <value value="&quot;Normal mean != 0&quot;"/>
+      <value value="&quot;Bimodal one direction&quot;"/>
+      <value value="&quot;Bimodal all directions&quot;"/>
     </enumeratedValueSet>
   </experiment>
 </experiments>
