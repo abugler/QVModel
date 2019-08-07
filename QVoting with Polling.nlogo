@@ -70,7 +70,7 @@ to spawn-voters-majority-vs-minority
     while [count voters != number-of-voters][
       create-voters 1 [
         set strategic? random-float 1 < proportion-of-strategic-voters
-        ifelse strategic? [set color pink][set color violet]
+        ifelse strategic? [set color 115 + 20 * vote-portion-strategic][set color violet]
         ifelse utility-sum-0 < minority-power [
           set utilities n-values (number-of-issues - 1) [random-normal 0 .1]
           set utilities fput random-normal .8 .05 utilities]
@@ -202,7 +202,6 @@ to vote-strategic
     set estimated-outcome (map [[a b] -> a + b] estimated-outcome votes)
   ]
 
-
   ; Calculate number of votes by using the polling data to guess the marginal pivotality
   ; See "Calculating pivotality from polling" in Notion for more details
   set votes (map [[e-o u] -> .5 * psi-prime(e-o) * u] estimated-outcome utilities)
@@ -216,7 +215,7 @@ to vote-strategic
   [
     ; Normalize Strategic Votes to 1
     let strategic-votes map [x -> x / sqrt sum-of-votes^2 * voice-credits] votes
-    ; Alias vote-portion-strategic to a
+    ; Alias vote-portion-strategic to a, to shorten lines
     let a vote-portion-strategic
     vote-truthful
     ; The votes vector cast is a combination of strategic votes and truthful votes.
@@ -242,12 +241,15 @@ end
 ; Takes a random sample of agent's truthful vote, and saves the result in the poll vector
 to take-poll
   let polled-agentset n-of (poll-response-rate * count voters) voters
-  ask voters[
-    set counted-in-last-poll? false
-  ]
   ask polled-agentset[
     calculate-preferred-votes-QV
     set counted-in-last-poll? true
+  ]
+
+  ask voters[
+    if (not member? self polled-agentset) [
+      set counted-in-last-poll? false
+    ]
   ]
   set poll n-values length social-policy-vector [0]
   foreach [votes] of polled-agentset [a -> set poll (map [[b c] -> b + c] a poll)]
@@ -360,7 +362,7 @@ proportion-of-strategic-voters
 proportion-of-strategic-voters
 0
 1
-0.72
+1.0
 .01
 1
 NIL
@@ -614,7 +616,7 @@ CHOOSER
 utility-distribution
 utility-distribution
 "Normal mean = 0" "Normal mean != 0" "Bimodal one direction" "Bimodal all directions" "Indifferent Majority vs. Passionate Minority"
-4
+3
 
 TEXTBOX
 784
@@ -661,7 +663,7 @@ vote-portion-strategic
 vote-portion-strategic
 0
 1
-0.38
+0.7
 .01
 1
 NIL
@@ -1054,9 +1056,9 @@ vote-QV</go>
   </experiment>
   <experiment name="does-polling-converge" repetitions="500" runMetricsEveryStep="false">
     <setup>setup</setup>
-    <go>take-poll</go>
+    <go>take-poll
+set social-policy-vector poll</go>
     <timeLimit steps="50"/>
-    <exitCondition>has-converged?</exitCondition>
     <metric>poll</metric>
     <metric>total-utility-gain</metric>
     <metric>maximal-utility?</metric>
@@ -1106,7 +1108,7 @@ vote-QV</go>
       <value value="&quot;Indifferent Majority vs. Passionate Minority&quot;"/>
     </enumeratedValueSet>
   </experiment>
-  <experiment name="converge-portion-of-strategic-vote" repetitions="500" runMetricsEveryStep="true">
+  <experiment name="converge-portion-of-strategic-vote" repetitions="1" runMetricsEveryStep="true">
     <setup>setup</setup>
     <go>take-poll
 set social-policy-vector poll</go>
