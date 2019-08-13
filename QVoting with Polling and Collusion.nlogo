@@ -9,6 +9,8 @@ voters-own[
 ]
 party-turtles-own[
   utility-doctrine
+  votes
+  individual-votes ; individual votes is simply for bookkeeping
 ]
 globals[
   social-policy-vector
@@ -135,6 +137,11 @@ to refresh
     set ycor ifelse-value abs next-ycor > max-pycor [(max-pycor - 1) * next-ycor / abs next-ycor] [next-ycor]
   ]
 
+  ask party-turtles[
+    set xcor mean [xcor] of link-neighbors
+    set ycor mean [ycor] of link-neighbors
+  ]
+
   ; If it is not the first tick, show the winners on the grid
   if ticks != 0 [show-winners]
 end
@@ -142,7 +149,8 @@ end
 ; Called by the Vote Button, executes the voting procedure for QV
 to vote-QV
   tick
-  ask voters [calculate-preferred-votes-QV]
+  ask voters with [count link-neighbors = 0][calculate-preferred-votes-QV]
+  ask party-turtles [vote-collude]
 
   ; sets social policy vector to be equal to the sum of all voting vectors
   set social-policy-vector n-values length social-policy-vector [0]
@@ -152,24 +160,37 @@ to vote-QV
   refresh
 end
 
+; Creates party turtles.  If a voter loses one or more dimension, it will create a party turtle.
+; These turtles will connect to voters with the same utility signs as their "utility doctrine". (The zeros in the doctrine mean that the turtle has no preference)
+; Party turtles require that the turtles linked to it must vote as stated in its doctrine. (For now, the doctrine requires that all voters will split their votes equally among these issues)
+; This should cause the group to have a greater influence than the sum of the individual voters
 to collude
   ask party-turtles [
-
+    let potential-links voters with [length filter [x -> x < 0] (map [[u d] -> u * d] utilities [utility-doctrine] of myself) = 0]
+    let number-of-new-links min list collusion-growth count potential-links
+    create-links-with n-of number-of-new-links potential-links [set color yellow]
   ]
 
-  let losing-voters voters with [member? false map [[u spv] -> u * spv > 0] utilities social-policy-vector]
-  let number-of-new-turtles max list party-turtles-created-per-cycle count losing-voters
+  let losing-voters voters with [member? false (map [[u spv] -> u * spv > 0] utilities social-policy-vector)]
+  let number-of-new-turtles min list party-turtles-created-per-cycle count losing-voters
   ask n-of number-of-new-turtles losing-voters [
+    let won-election? (map [[u spv] -> u * spv > 0] utilities social-policy-vector)
     hatch-party-turtles 1 [
       set color red
       set size 3
       set shape "turtle"
-      create-link-with myself
-      ; TODO set up utility, and have other party turtles find new members for their party
-      set utility-doctrine map []
+      create-link-with myself [set color yellow]
+      ; Set Utility Doctrine to be the signs of the voter's utility, if the voter lost in that dimension.
+      ; If the voter did not lose in that dimenion, then set to zero
+      set utility-doctrine (map [[w-e u] -> ifelse-value
+        w-e [0]
+        [abs u / u]
+      ] won-election? [utilities] of myself)
+      ; normalize the utility doctrine
+      let normalize sqrt sum map [u -> u ^ 2] utility-doctrine
+      set utility-doctrine map [u -> u / normalize] utility-doctrine
     ]
   ]
-
 end
 
 ; Called by the Vote Button, executes the voting procedure for 1p1v
@@ -184,16 +205,29 @@ end
 
 
 to calculate-preferred-votes-QV
-  ; If the agent is strategic, the agent will take the information from the last poll, and make a decision based off it.
-  ; The utility based vote is used in the calculation, so first that must be calculated.
-  ifelse strategic? and poll != nobody and votes != 0
-  [
-    vote-strategic
-  ]
-  [
-    vote-truthful
+  (ifelse strategic? and poll != nobody and votes != 0
+    [
+      vote-strategic
+    ]
+    [
+      vote-truthful
+  ])
+end
+
+; Party Turtle method. Sets the vote of all colluding members
+to vote-collude
+  ; Recording individual votes for bookkeeping
+  ask link-neighbors [calculate-preferred-votes-QV]
+  set individual-votes n-values length social-policy-vector [0]
+  foreach [votes] of link-neighbors [
+    v -> set individual-votes (map [[i-v x] -> i-v + x]
+      individual-votes v)
   ]
 
+  ; Assign votes
+  ask link-neighbors [set votes [utility-doctrine] of myself]
+  ; Recording colluding votes for bookkeeping
+  set votes map [x -> x * count link-neighbors] utility-doctrine
 end
 
 ; For the two issues that are shown on the grid, color the quadrant green if the outcome corresponding with it has the same sign.
@@ -264,6 +298,7 @@ to-report psi-prime[x]
 end
 
 ; Takes a random sample of agent's truthful vote, and saves the result in the poll vector
+; Does not take to account collusion
 to take-poll
   let polled-agentset n-of (poll-response-rate * count voters) voters
   ask polled-agentset[
@@ -372,7 +407,7 @@ number-of-voters
 number-of-voters
 0
 10000
-10000.0
+3039.0
 1
 1
 NIL
@@ -468,7 +503,7 @@ x-axis
 x-axis
 0
 number-of-issues - 1
-0.0
+9.0
 1
 1
 NIL
@@ -483,7 +518,7 @@ y-axis
 y-axis
 0
 number-of-issues - 1
-1.0
+0.0
 1
 1
 NIL
@@ -703,7 +738,7 @@ party-turtles-created-per-cycle
 party-turtles-created-per-cycle
 0
 10
-1.0
+2.0
 1
 1
 NIL
@@ -718,7 +753,7 @@ collusion-growth
 collusion-growth
 1
 100
-1.0
+100.0
 1
 1
 NIL
