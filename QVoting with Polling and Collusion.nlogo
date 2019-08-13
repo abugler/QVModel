@@ -1,10 +1,14 @@
 breed[voters voter]
-breed[influencers influencer]
+; breed[influencers influencer] UNUSED
+breed[party-turtles party-turtle]
 voters-own[
   utilities
   votes
   strategic?
   counted-in-last-poll?
+]
+party-turtles-own[
+  utility-doctrine
 ]
 globals[
   social-policy-vector
@@ -50,6 +54,7 @@ to setup
   refresh
 end
 
+; TODO: spawning voters with utility distributions is unreadable spagetti, fix this.
 to spawn-voters
   if utility-distribution = "Indifferent Majority vs. Passionate Minority"[
     spawn-voters-majority-vs-minority
@@ -143,8 +148,28 @@ to vote-QV
   set social-policy-vector n-values length social-policy-vector [0]
   foreach [votes] of voters [a -> (set social-policy-vector
     (map [[b c] -> b + c] a social-policy-vector))]
-
+  collude
   refresh
+end
+
+to collude
+  ask party-turtles [
+
+  ]
+
+  let losing-voters voters with [member? false map [[u spv] -> u * spv > 0] utilities social-policy-vector]
+  let number-of-new-turtles max list party-turtles-created-per-cycle count losing-voters
+  ask n-of number-of-new-turtles losing-voters [
+    hatch-party-turtles 1 [
+      set color red
+      set size 3
+      set shape "turtle"
+      create-link-with myself
+      ; TODO set up utility, and have other party turtles find new members for their party
+      set utility-doctrine map []
+    ]
+  ]
+
 end
 
 ; Called by the Vote Button, executes the voting procedure for 1p1v
@@ -291,25 +316,25 @@ to-report maximal-utility?
   report not member? false map [x -> x > 0] total-utility-gain
 end
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; These are entirely for behavior space experiments
-to store-outcome
-  set results fput social-policy-vector results
-end
-
-to-report has-converged?
-  if ticks < 4 [report false]
-  let current-outcome item 0 results
-  let index 1
-  while [index <= 3]
-  [
-    if member? false (map [[c-o r] -> abs (c-o - r) < .1] current-outcome (item index results)) [
-    report false
-  ]
-    set index index + 1
-  ]
-  report true
-end
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; These are entirely for behavior space experiments
+;to store-outcome
+;  set results fput social-policy-vector results
+;end
+;
+;to-report has-converged?
+;  if ticks < 4 [report false]
+;  let current-outcome item 0 results
+;  let index 1
+;  while [index <= 3]
+;  [
+;    if member? false (map [[c-o r] -> abs (c-o - r) < .1] current-outcome (item index results)) [
+;    report false
+;  ]
+;    set index index + 1
+;  ]
+;  report true
+;end
 @#$#@#$#@
 GRAPHICS-WINDOW
 242
@@ -347,7 +372,7 @@ number-of-voters
 number-of-voters
 0
 10000
-1500.0
+10000.0
 1
 1
 NIL
@@ -362,7 +387,7 @@ proportion-of-strategic-voters
 proportion-of-strategic-voters
 0
 1
-1.0
+0.0
 .01
 1
 NIL
@@ -377,7 +402,7 @@ number-of-issues
 number-of-issues
 2
 10
-2.0
+10.0
 1
 1
 NIL
@@ -616,7 +641,7 @@ CHOOSER
 utility-distribution
 utility-distribution
 "Normal mean = 0" "Normal mean != 0" "Bimodal one direction" "Bimodal all directions" "Indifferent Majority vs. Passionate Minority"
-3
+0
 
 TEXTBOX
 784
@@ -663,8 +688,38 @@ vote-portion-strategic
 vote-portion-strategic
 0
 1
-0.7
+0.0
 .01
+1
+NIL
+HORIZONTAL
+
+SLIDER
+0
+545
+251
+578
+party-turtles-created-per-cycle
+party-turtles-created-per-cycle
+0
+10
+1.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+0
+581
+172
+614
+collusion-growth
+collusion-growth
+1
+100
+1.0
+1
 1
 NIL
 HORIZONTAL
