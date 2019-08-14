@@ -1300,7 +1300,7 @@ set social-policy-vector poll</go>
       <value value="0"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="party-turtles-created-per-cycle">
-      <value value="1"/>
+      <value value="10"/>
       <value value="1000"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="QV?">
@@ -1313,8 +1313,6 @@ set social-policy-vector poll</go>
     </enumeratedValueSet>
     <enumeratedValueSet variable="utility-distribution">
       <value value="&quot;Normal mean = 0&quot;"/>
-      <value value="&quot;Bimodal one direction&quot;"/>
-      <value value="&quot;Bimodal all directions&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="collusion-growth">
       <value value="1"/>
