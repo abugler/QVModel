@@ -11,6 +11,7 @@ party-turtles-own[
   utility-doctrine
   votes
   individual-votes ; individual votes is simply for bookkeeping
+  advantage
 ]
 globals[
   social-policy-vector
@@ -19,6 +20,7 @@ globals[
   results
   poll-turtle
   voice-credits
+  total-advantage
 ]
 
 to setup
@@ -56,7 +58,7 @@ to setup
   refresh
 end
 
-; TODO: spawning voters with utility distributions is unreadable spagetti, fix this.
+; TODO: spawning voters with utility distributions is unreadable spaghetti, fix this.
 to spawn-voters
   if utility-distribution = "Indifferent Majority vs. Passionate Minority"[
     spawn-voters-majority-vs-minority
@@ -151,6 +153,8 @@ to vote-QV
   tick
   ask voters with [count link-neighbors = 0][calculate-preferred-votes-QV]
   ask party-turtles [vote-collude]
+  set total-advantage n-values length social-policy-vector [0]
+  foreach [advantage] of party-turtles [p -> set total-advantage (map [[x y] -> x + y] total-advantage p)]
 
   ; sets social policy vector to be equal to the sum of all voting vectors
   set social-policy-vector n-values length social-policy-vector [0]
@@ -160,18 +164,17 @@ to vote-QV
   refresh
 end
 
-; Creates party turtles.  If a voter loses one or more dimension, it will create a party turtle.
+; Creates party turtles.  If a voter loses more than one dimension, it will create a party turtle.
 ; These turtles will connect to voters with the same utility signs as their "utility doctrine". (The zeros in the doctrine mean that the turtle has no preference)
 ; Party turtles require that the turtles linked to it must vote as stated in its doctrine. (For now, the doctrine requires that all voters will split their votes equally among these issues)
 ; This should cause the group to have a greater influence than the sum of the individual voters
 to collude
-  ask party-turtles [
-    let potential-links voters with [length filter [x -> x < 0] (map [[u d] -> u * d] utilities [utility-doctrine] of myself) = 0]
-    let number-of-new-links min list collusion-growth count potential-links
-    create-links-with n-of number-of-new-links potential-links [set color yellow]
-  ]
+  find-new-voters
+  make-new-party-turtles
+end
 
-  let losing-voters voters with [member? false (map [[u spv] -> u * spv > 0] utilities social-policy-vector)]
+to make-new-party-turtles
+  let losing-voters voters with [length filter [x -> x < 0] (map [[u spv] -> u * spv] utilities social-policy-vector) > 1 and count link-neighbors = 0]
   let number-of-new-turtles min list party-turtles-created-per-cycle count losing-voters
   ask n-of number-of-new-turtles losing-voters [
     let won-election? (map [[u spv] -> u * spv > 0] utilities social-policy-vector)
@@ -190,6 +193,41 @@ to collude
       let normalize sqrt sum map [u -> u ^ 2] utility-doctrine
       set utility-doctrine map [u -> u / normalize] utility-doctrine
     ]
+  ]
+end
+to find-new-voters
+  ask party-turtles [
+    ; Find voters that have agreeing utilities, and not already linked to
+    let potential-links voters with [length filter [x -> x < 0] (map [[u d] -> u * d] utilities [utility-doctrine] of myself) = 0 and not member? myself link-neighbors]
+    let number-of-new-links min list collusion-growth count potential-links
+    let new-colluder-set n-of number-of-new-links potential-links
+
+
+    ask new-colluder-set [
+      ; If the voter is already apart of a colluding group...
+      if count link-neighbors > 0 [
+        let new-turtle myself
+        ask link-neighbors [
+          (ifelse
+            ; See if that colluding groups utility-doctrine is identical
+            (not member? false (map [[u n-u] -> u = n-u] utility-doctrine [utility-doctrine] of new-turtle))[
+              ; If so, change the ownership of all it's voters to the calling colluding group, and die.
+              set new-colluder-set (turtle-set new-colluder-set link-neighbors)
+              die
+            ]
+            ; If not, and if the asking groups utility doctrine is closer to the voter, he will change colluding groups
+            (sum (map [[u d] -> abs(u - d)] [utilities] of myself [utility-doctrine] of new-turtle) < sum (map [[u d] -> abs(u - d)] [utilities] of myself utility-doctrine))[
+              ask myself [ask my-links[die]]
+            ]
+            ; Otherwise, keep the voter inside it's current group
+            [
+              ask myself [set new-colluder-set other new-colluder-set]
+            ]
+          )
+        ]
+      ]
+    ]
+    create-links-with new-colluder-set [set color yellow]
   ]
 end
 
@@ -211,7 +249,8 @@ to calculate-preferred-votes-QV
     ]
     [
       vote-truthful
-  ])
+    ]
+  )
 end
 
 ; Party Turtle method. Sets the vote of all colluding members
@@ -228,6 +267,7 @@ to vote-collude
   ask link-neighbors [set votes [utility-doctrine] of myself]
   ; Recording colluding votes for bookkeeping
   set votes map [x -> x * count link-neighbors] utility-doctrine
+  set advantage (map [[v i-v] -> v - i-v] votes individual-votes)
 end
 
 ; For the two issues that are shown on the grid, color the quadrant green if the outcome corresponding with it has the same sign.
@@ -353,6 +393,7 @@ end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; These are entirely for behavior space experiments
+
 ;to store-outcome
 ;  set results fput social-policy-vector results
 ;end
@@ -370,6 +411,17 @@ end
 ;  ]
 ;  report true
 ;end
+
+; Reports Shapley value vector for a colluding group.
+; See Notion for more details
+to-report shapley-value
+  ; Since no colluding has been done when there is only one colluding member, report 0
+  if count link-neighbors <= 1 [report 0]
+
+  let p n-values length social-policy-vector [0]
+  ask link-neighbors [set p (map [[u x] -> u + x] utilities p)]
+  report (map [[a t-a x] -> a / t-a * x] advantage total-advantage p )
+end
 @#$#@#$#@
 GRAPHICS-WINDOW
 242
@@ -407,7 +459,7 @@ number-of-voters
 number-of-voters
 0
 10000
-3039.0
+10000.0
 1
 1
 NIL
@@ -437,7 +489,7 @@ number-of-issues
 number-of-issues
 2
 10
-10.0
+2.0
 1
 1
 NIL
@@ -503,7 +555,7 @@ x-axis
 x-axis
 0
 number-of-issues - 1
-9.0
+1.0
 1
 1
 NIL
@@ -697,7 +749,7 @@ minority-power
 minority-power
 0
 100
-100.0
+90.0
 10
 1
 NIL
@@ -738,7 +790,7 @@ party-turtles-created-per-cycle
 party-turtles-created-per-cycle
 0
 10
-2.0
+1.0
 1
 1
 NIL
@@ -751,9 +803,9 @@ SLIDER
 614
 collusion-growth
 collusion-growth
-1
+0
 100
-100.0
+1.0
 1
 1
 NIL
@@ -1226,6 +1278,48 @@ set social-policy-vector poll</go>
       <value value="&quot;Normal mean != 0&quot;"/>
       <value value="&quot;Bimodal one direction&quot;"/>
       <value value="&quot;Bimodal all directions&quot;"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="QV-Collusion" repetitions="500" runMetricsEveryStep="true">
+    <setup>setup</setup>
+    <go>vote-QV</go>
+    <timeLimit steps="50"/>
+    <metric>[shapley-value] of party-turtles</metric>
+    <metric>mean [count link-neighbors] of party-turtles</metric>
+    <metric>[count link-neighbors] of party-turtles</metric>
+    <metric>count party-turtles</metric>
+    <metric>total-utility-gain</metric>
+    <metric>length map [x -&gt; x &gt; 0] total-utility-gain</metric>
+    <enumeratedValueSet variable="vote-portion-strategic">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="number-of-voters">
+      <value value="10000"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="proportion-of-strategic-voters">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="party-turtles-created-per-cycle">
+      <value value="1"/>
+      <value value="1000"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="QV?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="number-of-issues">
+      <value value="2"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="utility-distribution">
+      <value value="&quot;Normal mean = 0&quot;"/>
+      <value value="&quot;Bimodal one direction&quot;"/>
+      <value value="&quot;Bimodal all directions&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="collusion-growth">
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
     </enumeratedValueSet>
   </experiment>
 </experiments>
