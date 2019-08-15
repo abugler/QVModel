@@ -1283,7 +1283,7 @@ set social-policy-vector poll</go>
   <experiment name="QV-Collusion" repetitions="500" runMetricsEveryStep="true">
     <setup>setup</setup>
     <go>vote-QV</go>
-    <timeLimit steps="50"/>
+    <timeLimit steps="70"/>
     <metric>[shapley-value] of party-turtles</metric>
     <metric>mean [count link-neighbors] of party-turtles</metric>
     <metric>[count link-neighbors] of party-turtles</metric>
@@ -1300,8 +1300,7 @@ set social-policy-vector poll</go>
       <value value="0"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="party-turtles-created-per-cycle">
-      <value value="10"/>
-      <value value="1000"/>
+      <value value="1"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="QV?">
       <value value="true"/>
@@ -1318,6 +1317,47 @@ set social-policy-vector poll</go>
       <value value="1"/>
       <value value="5"/>
       <value value="10"/>
+      <value value="100"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="QV-Collusion-test" repetitions="1" runMetricsEveryStep="true">
+    <setup>setup</setup>
+    <go>vote-QV</go>
+    <timeLimit steps="70"/>
+    <metric>[shapley-value] of party-turtles</metric>
+    <metric>mean [count link-neighbors] of party-turtles</metric>
+    <metric>[count link-neighbors] of party-turtles</metric>
+    <metric>count party-turtles</metric>
+    <metric>total-utility-gain</metric>
+    <metric>length map [x -&gt; x &gt; 0] total-utility-gain</metric>
+    <enumeratedValueSet variable="vote-portion-strategic">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="number-of-voters">
+      <value value="10000"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="proportion-of-strategic-voters">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="party-turtles-created-per-cycle">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="QV?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="number-of-issues">
+      <value value="2"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="utility-distribution">
+      <value value="&quot;Normal mean = 0&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="collusion-growth">
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
+      <value value="100"/>
     </enumeratedValueSet>
   </experiment>
 </experiments>

@@ -362,7 +362,7 @@ proportion-of-strategic-voters
 proportion-of-strategic-voters
 0
 1
-1.0
+0.42
 .01
 1
 NIL
@@ -663,7 +663,7 @@ vote-portion-strategic
 vote-portion-strategic
 0
 1
-0.7
+0.9
 .01
 1
 NIL
@@ -1108,7 +1108,7 @@ set social-policy-vector poll</go>
       <value value="&quot;Indifferent Majority vs. Passionate Minority&quot;"/>
     </enumeratedValueSet>
   </experiment>
-  <experiment name="converge-portion-of-strategic-vote" repetitions="1" runMetricsEveryStep="true">
+  <experiment name="converge-portion-of-strategic-vote" repetitions="1000" runMetricsEveryStep="true">
     <setup>setup</setup>
     <go>take-poll
 set social-policy-vector poll</go>
