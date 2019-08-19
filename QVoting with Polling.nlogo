@@ -28,7 +28,7 @@ to setup
   ask voters [
     set counted-in-last-poll? false
   ]
-  ; Initalize poll turtle
+  ; Initialize poll turtle
 
   ask patch 0 0 [
     sprout 1 [
