@@ -422,6 +422,22 @@ to-report shapley-value
   ask link-neighbors [set p (map [[u x] -> u + x] utilities p)]
   report (map [[a t-a x] -> a / t-a * x] advantage total-advantage p )
 end
+
+to-report sum-0-shapley
+  let shapleys [shapley-value] of party-turtles
+  ifelse shapleys != 0
+  [set shapleys filter [x -> x != 0] shapleys]
+  [report 0]
+  report sum map [x -> item 0 x] shapleys
+end
+
+to-report ave-0-shapley
+  let shapleys [shapley-value] of party-turtles
+  ifelse shapleys != 0
+  [set shapleys filter [x -> x != 0] shapleys]
+  [report 0]
+  report (sum map [x -> item 0 x] shapleys) / length shapleys
+end
 @#$#@#$#@
 GRAPHICS-WINDOW
 242
@@ -459,7 +475,7 @@ number-of-voters
 number-of-voters
 0
 10000
-10000.0
+3725.0
 1
 1
 NIL
@@ -489,7 +505,7 @@ number-of-issues
 number-of-issues
 2
 10
-2.0
+3.0
 1
 1
 NIL
@@ -790,7 +806,7 @@ party-turtles-created-per-cycle
 party-turtles-created-per-cycle
 0
 10
-1.0
+10.0
 1
 1
 NIL
@@ -805,7 +821,7 @@ collusion-growth
 collusion-growth
 0
 100
-1.0
+100.0
 1
 1
 NIL
@@ -1325,6 +1341,86 @@ set social-policy-vector poll</go>
     <go>vote-QV</go>
     <timeLimit steps="70"/>
     <metric>[shapley-value] of party-turtles</metric>
+    <metric>mean [count link-neighbors] of party-turtles</metric>
+    <metric>[count link-neighbors] of party-turtles</metric>
+    <metric>count party-turtles</metric>
+    <metric>total-utility-gain</metric>
+    <metric>length map [x -&gt; x &gt; 0] total-utility-gain</metric>
+    <enumeratedValueSet variable="vote-portion-strategic">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="number-of-voters">
+      <value value="10000"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="proportion-of-strategic-voters">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="party-turtles-created-per-cycle">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="QV?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="number-of-issues">
+      <value value="2"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="utility-distribution">
+      <value value="&quot;Normal mean = 0&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="collusion-growth">
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
+      <value value="100"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="QV-Collusion-no-shapley" repetitions="500" runMetricsEveryStep="true">
+    <setup>setup</setup>
+    <go>vote-QV</go>
+    <timeLimit steps="70"/>
+    <metric>mean [count link-neighbors] of party-turtles</metric>
+    <metric>[count link-neighbors] of party-turtles</metric>
+    <metric>count party-turtles</metric>
+    <metric>total-utility-gain</metric>
+    <metric>length map [x -&gt; x &gt; 0] total-utility-gain</metric>
+    <enumeratedValueSet variable="vote-portion-strategic">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="number-of-voters">
+      <value value="10000"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="proportion-of-strategic-voters">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="party-turtles-created-per-cycle">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="QV?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="number-of-issues">
+      <value value="2"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="utility-distribution">
+      <value value="&quot;Normal mean = 0&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="collusion-growth">
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
+      <value value="100"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="QV-Collusion-shapley" repetitions="500" runMetricsEveryStep="true">
+    <setup>setup</setup>
+    <go>vote-QV</go>
+    <timeLimit steps="70"/>
+    <metric>sum-0-shapley</metric>
+    <metric>ave-0-shapley</metric>
     <metric>mean [count link-neighbors] of party-turtles</metric>
     <metric>[count link-neighbors] of party-turtles</metric>
     <metric>count party-turtles</metric>
