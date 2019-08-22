@@ -208,8 +208,8 @@ to vote-QV
 
   ; sets social policy vector to be equal to the sum of all voting vectors
   set social-policy-vector n-values length social-policy-vector [0]
-  foreach [votes] of voters [a -> (set social-policy-vector
-    (map [[b c] -> b + c] a social-policy-vector))]
+  foreach [votes] of voters [v -> (set social-policy-vector
+    (map [[b c] -> b + c] v social-policy-vector))]
   collude
   refresh
 end
@@ -228,7 +228,7 @@ to make-new-colluding-turtles
   ; Find losing voters, which are voters that have lost in more than one dimension, and are not already part of a group
   let lost-dimensions [ -> length filter [x -> x < 0] (map [[u spv] -> u * spv] utilities social-policy-vector)]
   let losing-voters voters with [runresult lost-dimensions > 1 and not any? link-neighbors]
-  let number-of-new-turtles min list colluding-turtles-created-per-vote count losing-voters
+  let number-of-new-turtles min list colluding-turtles-created count losing-voters
 
   ask n-of number-of-new-turtles losing-voters [
     let won-election-vector (map [[u spv] -> u * spv > 0] utilities social-policy-vector)
@@ -239,10 +239,7 @@ to make-new-colluding-turtles
       create-link-with myself [set color yellow]
       ; Set Utility Doctrine to be the signs of the voter's utility, if the voter lost in that dimension.
       ; If the voter did not lose in that dimenion, then set to zero
-      set utility-doctrine (map [[w-e u] -> ifelse-value
-        w-e [0]
-        [abs u / u]
-      ] won-election-vector [utilities] of myself)
+      set utility-doctrine [utilities] of myself
       ; Normalize the utility doctrine to 1
       let normalize sqrt sum map [u -> u ^ 2] utility-doctrine
       set utility-doctrine map [u -> u / normalize] utility-doctrine
@@ -330,7 +327,16 @@ to vote-collude
   ]
 
   ; Assign votes
-  ask link-neighbors [set votes [utility-doctrine] of myself]
+  ask link-neighbors [
+    ifelse  random-float 1 < proportion-cooperate
+    [
+      set votes [utility-doctrine] of myself
+      ask my-links [set color yellow]
+    ]
+    [
+      ask my-links [set color red]
+    ]
+  ]
   ; Recording colluding votes for bookkeeping
   set votes map [x -> x * count link-neighbors] utility-doctrine
   ; Advantage is the votes the colluding party gains from colluding, as opposed to voting individually
@@ -532,7 +538,7 @@ number-of-voters
 number-of-voters
 0
 10000
-2000.0
+200.0
 100
 1
 voters
@@ -562,7 +568,7 @@ number-of-issues
 number-of-issues
 2
 10
-10.0
+2.0
 1
 1
 Issues
@@ -729,7 +735,7 @@ NIL
 MONITOR
 716
 341
-954
+1009
 386
 Social Policy Vector
 map [x -> precision x 2]social-policy-vector
@@ -801,7 +807,7 @@ CHOOSER
 utility-distribution
 utility-distribution
 "Normal mean = 0" "Normal mean != 0" "Bimodal one direction" "Bimodal all directions" "Indifferent Majority vs. Passionate Minority"
-0
+1
 
 TEXTBOX
 905
@@ -831,7 +837,7 @@ HORIZONTAL
 MONITOR
 716
 387
-957
+1009
 432
 Utility Gain
 map [x -> precision x 2] total-utility-gain
@@ -848,7 +854,7 @@ vote-portion-strategic
 vote-portion-strategic
 0
 1
-0.0
+0.12
 .01
 1
 NIL
@@ -856,14 +862,14 @@ HORIZONTAL
 
 SLIDER
 0
-386
-325
-419
-colluding-turtles-created-per-vote
-colluding-turtles-created-per-vote
+387
+249
+420
+colluding-turtles-created
+colluding-turtles-created
 0
 10
-6.0
+1.0
 1
 1
 Colluding Turtles
@@ -878,22 +884,22 @@ collusion-growth
 collusion-growth
 0
 100
-46.0
+5.0
 1
 1
 links per tick
 HORIZONTAL
 
 SLIDER
-8
-464
-180
-497
+0
+457
+248
+490
 proportion-cooperate
 proportion-cooperate
 0
 1
-1.0
+0.8
 .05
 1
 NIL
@@ -910,20 +916,9 @@ This a model of Quadratic Voting, otherwise known as QV. QV has the following pr
 
 For example, if each agent has 100 voice credits, it may be inclined to spend all 100 voice credits on 10 vote for a single referendum, if it only cares about that specific referendum. If an agent wishes to split his 100 voice credits on 4 different referenda, he can spend 25 voice credits on each, gaining 5 votes for each referenda.  
 
-///SHOULD ANYTHING PAST THIS PART BE DELETED?
+## HOW IT WORKS 
 
-The main advantage of QV is that an agent can show its preferences toward each issue, while also imposing a cost on overexaggrating ones preferences. In this model, each Agent is assigned a "utility" value for each issue in the election, which can also be considered their preference.  
-
-The Utility value is how much the agent wants the issue to pass. (If it is negative, the agent does not want the issue to pass) This may be represented in real life by how much the issue affects them, for example, a gay couple will have a higher utility value on the issue of gay marriage, as opposed to a straight couple, who are simply supporters of gay marriage, but it does not directly affect them. In multiple academic papers by Glen Weyl, the ability to show preferences in a QV mechanism approximately guarentees a positive outcome. The explanation and proof are too long to show here. 
-
-Besides QV, this model also has other supplementary features, Polling and Collusion.
-
-Under normal circumstances, the agents will vote according to their utilities. However, when a poll of the population is taken "strategic" voters will use the information from the last poll to inform their choices.  
-
-Collusion is when agents with similar and non-conflicting interests will split their votes to have a greater voice. For example, agents 1 and 2 want issues 1 and 2 to be passed respectively, and do not care about any other issue passing.  Individually, each agent will spend all their voice credits toward each issue they care about. However, each voter instead can collude, and split their votes between the two issues, increase their collective say both issues. 
-
-
-## HOW IT WORKS
+How an agent votes is affected by their utility value for each issue. The Utility value is how much the agent will gain if the issue passes. (If it is negative, the agent will lose if the issue passes.) This may be represented in real life by how much the issue affects them, for example, a gay couple will have a higher utility value on the issue of gay marriage, as opposed to a straight couple, who are simply supporters of gay marriage, but it does not directly affect them.
 
 Agents can be grouped into the following three categories:
 
@@ -935,7 +930,7 @@ Each of the categories of voters follow different rules when voting.
 
 Truthful voters will map their utilites of each issue to votes, so their votes are proportional to their utilities. 
 
-Strategic Voters will act like Truthful voters, unless a poll has been taken. If a poll has been taken, they will multiply each of their Truthful Votes by a calculated "marginal pivotality", which an estimate on how likely the agent is to flip the outcome in their favor.  The marginal pivotality is calculated from the poll results. If the calculated marginal pivotality is extremely close to zero, a strategic voter will vote like the truthful voter.
+Strategic Voters will act like Truthful voters, unless a poll has been taken. If a poll has been taken, they will multiply each of their Truthful Votes by a calculated "marginal pivotality", which is an estimate on how likely the agent is to flip the outcome in their favor.  The marginal pivotality is calculated from the poll results. If the calculated marginal pivotality is extremely close to zero, a strategic voter will vote like the truthful voter.
 
 Collduing Voters will split their votes equally among several different issues, according to the colluding group that they are apart of.  
 
@@ -951,14 +946,19 @@ Press vote(hotkey: v) to have the agents vote.  The quadrant which won the vote 
 
 Some additional options are noted in "Things to try"
 
-
 ## THINGS TO NOTICE
 
 ///Don't really know what to put here that won't be on Things to Try
 
 ## THINGS TO TRY
 
-Try changing the utility distribution.  Notice that the in the Minority v. Majority distribution the minority will likely win if there are more issues.  Can you guess why? In the Normal mean != 0 there isn't much a difference between the strategic voters and the truthful voters.  Why is that?
+Besides QV, this model also has other supplementary features, Polling and Collusion.
+
+Under normal circumstances, the agents will vote according to their utilities. However, when a poll of the population is taken "strategic" voters will use the information from the last poll to inform their choices.  
+
+Collusion is when agents with similar and non-conflicting interests will split their votes to have a greater voice. For example, agents 1 and 2 want issues 1 and 2 to be passed respectively, and do not care about any other issue passing.  Individually, each agent will spend all their voice credits toward each issue they care about. However, each voter instead can collude, and split their votes between the two issues, increase their collective say both issues. 
+
+Try changing the utility distribution.  Notice that the in the Minority v. Majority distribution the minority will likely win if there are more issues.  Can you guess why? In the Normal mean != 0 distribution there isn't much a difference between the strategic voters and the truthful voters.  Why is that?
 
 Flipping the QV? switch will toggle the model between QV and one person one vote (1p1v).  Observe the differences between 1p1v and QV, especially in the Minority vs. Majority scenario. 
 
@@ -1493,6 +1493,36 @@ set social-policy-vector poll</go>
       <value value="5"/>
       <value value="10"/>
       <value value="100"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="QV-Collusion-Betray" repetitions="100" runMetricsEveryStep="true">
+    <setup>setup</setup>
+    <go>go</go>
+    <metric>count turtles</metric>
+    <enumeratedValueSet variable="vote-portion-strategic">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="number-of-voters">
+      <value value="200"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="proportion-cooperate" first="0.2" step="0.2" last="0.8"/>
+    <enumeratedValueSet variable="proportion-of-strategic-voters">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="number-of-issues">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="poll-response-rate">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="colluding-turtles-created">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="utility-distribution">
+      <value value="&quot;Normal mean = 0&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="collusion-growth">
+      <value value="5"/>
     </enumeratedValueSet>
   </experiment>
 </experiments>
