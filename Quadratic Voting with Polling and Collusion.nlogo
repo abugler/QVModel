@@ -239,7 +239,10 @@ to make-new-colluding-turtles
       create-link-with myself [set color yellow]
       ; Set Utility Doctrine to be the signs of the voter's utility, if the voter lost in that dimension.
       ; If the voter did not lose in that dimenion, then set to zero
-      set utility-doctrine [utilities] of myself
+      set utility-doctrine (map [[u s-p] ->
+        ifelse-value u * s-p > 0 [0]
+        [u / abs u]
+      ][utilities] of myself social-policy-vector )
       ; Normalize the utility doctrine to 1
       let normalize sqrt sum map [u -> u ^ 2] utility-doctrine
       set utility-doctrine map [u -> u / normalize] utility-doctrine
@@ -807,7 +810,7 @@ CHOOSER
 utility-distribution
 utility-distribution
 "Normal mean = 0" "Normal mean != 0" "Bimodal one direction" "Bimodal all directions" "Indifferent Majority vs. Passionate Minority"
-1
+0
 
 TEXTBOX
 905
@@ -899,7 +902,7 @@ proportion-cooperate
 proportion-cooperate
 0
 1
-0.8
+0.2
 .05
 1
 NIL
