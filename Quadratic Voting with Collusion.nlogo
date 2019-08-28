@@ -112,7 +112,7 @@ to set-utilities
   )
 end
 
-; Moves voters and party turtles to their locations based of their utilities
+; Moves voters and collusion turtles to their locations based of their utilities
 to refresh
   clear-drawing
 
@@ -171,7 +171,7 @@ to vote-QV
   collude
 end
 
-; Creates party turtles.  If a voter loses more than one dimension, it will create a party turtle.
+; Creates party turtles.  If a voter loses more than one dimension, it will create a colluding turtle.
 ; These turtles will connect to voters with the same utility signs as their "utility doctrine". (The zeros in the doctrine mean that the turtle has no preference)
 ; Party turtles require that the turtles linked to it must vote as stated in its doctrine. (For now, the doctrine requires that all voters will split their votes equally among these issues)
 ; This should cause the group to have a greater influence than the sum of the individual voters
@@ -190,17 +190,31 @@ to make-new-colluding-turtles
   let number-of-new-turtles min list colluding-turtles-created count losing-voters
 
   ask n-of number-of-new-turtles losing-voters [
-    let won-election-vector (map [[u spv] -> u * spv > 0] utilities social-policy-list)
-    hatch-colluding-turtles 1 [
-      set color red
-      set size 3
-      set shape "turtle"
-      create-link-with myself [set color yellow]
-      ; Set Utility Doctrine to be the signs of the voter's utility, if the voter lost in that dimension.
-      ; If the voter did not lose in that dimenion, then set to zero
-      set total-utility normalize [utilities] of myself
-      set normalized-utility total-utility
+    create-colluder
+  ]
+end
+
+to place-colluder
+  if mouse-inside?[
+    ; First find a turtle closest to the mouse
+    let closest-turtle min-one-of voters [distance patch mouse-xcor mouse-ycor]
+    ask closest-turtle
+    [
+      create-colluder
     ]
+  ]
+end
+
+to create-colluder
+  hatch-colluding-turtles 1 [
+    set color red
+    set size 3
+    set shape "turtle"
+    create-link-with myself [set color yellow]
+    ; Set Utility Doctrine to be the signs of the voter's utility, if the voter lost in that dimension.
+    ; If the voter did not lose in that dimenion, then set to zero
+    set total-utility normalize [utilities] of myself
+    set normalized-utility total-utility
   ]
 end
 
@@ -210,83 +224,87 @@ to find-new-voters
     let potential-colluder-set n-of collusion-growth voters
     ask potential-colluder-set [
       let asking-turtle myself
-      let normal-utility matrix-normalize matrix:from-row-list (list utilities)
 
       ; If the voter is already apart of a colluding group...
       ifelse any? link-neighbors
       [
-        let current-turtle one-of link-neighbors
-        ; The following code checks if the vote total between the two colluding groups is more aligned if the agent switches or not.
-        ; See the section "Averaged Colluding Groups" in Notion for details on how the vector math works.
-        let current-turtle-utility-switch matrix:minus matrix:from-row-list (list [total-utility] of current-turtle) normal-utility
-        let asking-turtle-utility-switch matrix:plus matrix:from-row-list (list [total-utility] of asking-turtle) normal-utility
-        let asking-turtle-utility-stay matrix:from-row-list (list [normalized-utility] of asking-turtle)
-        let current-turtle-utility-stay matrix:from-row-list (list [normalized-utility] of current-turtle)
-        let is-switching-greater-aligned? (sum matrix:get-row (matrix:times-element-wise normal-utility
-          (matrix:plus
-            (matrix:times matrix-normalize current-turtle-utility-switch ([count link-neighbors] of current-turtle - 1))
-            (matrix:times matrix-normalize asking-turtle-utility-switch ([count link-neighbors] of asking-turtle + 1))
-            (matrix:times current-turtle-utility-stay  -1  [count link-neighbors] of current-turtle)
-            (matrix:times asking-turtle-utility-stay  -1  [count link-neighbors] of asking-turtle))
-          ) 0
-        ) > 0
-
-        if is-switching-greater-aligned? [
-          ask my-links [die]
-          create-link-with asking-turtle[set color yellow]
-          ask asking-turtle [
-            set total-utility matrix:get-row asking-turtle-utility-switch 0
-            set normalized-utility normalize total-utility
-          ]
-          ask current-turtle [
-            set total-utility matrix:get-row current-turtle-utility-switch 0
-            set normalized-utility normalize total-utility
-          ]
-        ]
+        switch-colluding-group asking-turtle
       ]
       ; If not...
       [
-        ; The following code checks if the vote total of the group and the agent is more aligned with the agent if he joins or not.
-        ; See the section "Averaged Colluding Groups" in Notion for details on how the vector math works.
-        let votes-vector matrix:from-row-list (list votes)
-        let asking-turtle-utility-decline matrix:from-row-list (list [normalized-utility] of asking-turtle)
-        let asking-turtle-utility-join matrix:plus matrix:from-row-list (list [total-utility] of asking-turtle) normal-utility
-        let is-switching-greater-aligned? (sum matrix:get-row (matrix:times-element-wise normal-utility
-          (matrix:minus
-            (matrix:times matrix-normalize asking-turtle-utility-join ([count link-neighbors] of asking-turtle + 1))
-            votes-vector
-            (matrix:times asking-turtle-utility-decline [count link-neighbors] of asking-turtle)
-          )) 0
-        ) > 0
-
-        show votes
-        show asking-turtle-utility-decline
-        show asking-turtle-utility-join
-
-        if is-switching-greater-aligned?[
-          show "JOINED!"
-          create-link-with asking-turtle[set color yellow]
-          ask asking-turtle [
-            set total-utility matrix:get-row asking-turtle-utility-join 0
-            set normalized-utility normalize total-utility
-          ]
-        ]
+        join-colluding-group asking-turtle
       ]
+    ]
+  ]
+end
+
+to switch-colluding-group [asking-turtle]
+  let normal-utility matrix-normalize matrix:from-row-list (list utilities)
+  let current-turtle one-of link-neighbors
+  ; The following code checks if the vote total between the two colluding groups is more aligned if the agent switches or not.
+  ; See the section "Averaged Colluding Groups" in Notion for details on how the vector math works.
+  let current-turtle-utility-switch matrix:minus matrix:from-row-list (list [total-utility] of current-turtle) normal-utility
+  let asking-turtle-utility-switch matrix:plus matrix:from-row-list (list [total-utility] of asking-turtle) normal-utility
+  let asking-turtle-utility-stay matrix:from-row-list (list [normalized-utility] of asking-turtle)
+  let current-turtle-utility-stay matrix:from-row-list (list [normalized-utility] of current-turtle)
+  let is-switching-greater-aligned? (sum matrix:get-row (matrix:times-element-wise normal-utility
+    (matrix:plus
+      (matrix:times matrix-normalize current-turtle-utility-switch ([count link-neighbors] of current-turtle - 1))
+      (matrix:times matrix-normalize asking-turtle-utility-switch ([count link-neighbors] of asking-turtle + 1))
+      (matrix:times current-turtle-utility-stay  -1  [count link-neighbors] of current-turtle)
+      (matrix:times asking-turtle-utility-stay  -1  [count link-neighbors] of asking-turtle))
+    ) 0
+  ) > 0
+  ; If the total vote vector is more algined with the agents utilities from Switching, then switch
+  if is-switching-greater-aligned? [
+    ask my-links [die]
+    create-link-with asking-turtle[set color yellow]
+    ask asking-turtle [
+      set total-utility matrix:get-row asking-turtle-utility-switch 0
+      set normalized-utility normalize total-utility
+    ]
+    ask current-turtle [
+      set total-utility matrix:get-row current-turtle-utility-switch 0
+      set normalized-utility normalize total-utility
+    ]
+  ]
+end
+
+
+to join-colluding-group [asking-turtle]
+  let normal-utility matrix-normalize matrix:from-row-list (list utilities)
+  ; The following code checks if the vote total of the group and the agent is more aligned with the agent if he joins or not.
+  ; See the section "Averaged Colluding Groups" in Notion for details on how the vector math works.
+  let votes-vector matrix:from-row-list (list votes)
+  let asking-turtle-utility-decline matrix:from-row-list (list [normalized-utility] of asking-turtle)
+  let asking-turtle-utility-join matrix:plus matrix:from-row-list (list [total-utility] of asking-turtle) normal-utility
+  let is-switching-greater-aligned? (sum matrix:get-row (matrix:times-element-wise normal-utility
+    (matrix:minus
+      (matrix:times matrix-normalize asking-turtle-utility-join ([count link-neighbors] of asking-turtle + 1))
+      votes-vector
+      (matrix:times asking-turtle-utility-decline [count link-neighbors] of asking-turtle)
+    )) 0
+  ) > 0
+
+  ; If the total vote vector is more aligned with the agents utilities, switch
+  if is-switching-greater-aligned?[
+    create-link-with asking-turtle[set color yellow]
+    ask asking-turtle [
+      set total-utility matrix:get-row asking-turtle-utility-join 0
+      set normalized-utility normalize total-utility
     ]
   ]
 end
 
 ; Called by the Vote Button, executes the voting procedure for 1p1v
 to vote-1p1v
-  set social-policy-vector n-values length social-policy-vector [0]
+  set social-policy-vector array:from-list n-values array:length social-policy-vector [0]
 
-  ; Each Voter will cast 1 if utility is greater than 0 for an issue, -1 other wise
-  foreach [utilities] of voters [
-    u -> (
-      set social-policy-vector (map
-      [[b c] -> (b / abs b) + c]
-      u social-policy-vector
-    ))
+  ; Each Voter will cast 1 if utility is greater than 0 for an issue, -1 otherwise
+  foreach issues [i -> array:set social-policy-vector i sum
+    [ifelse-value
+      item i utilities = 0 [0]
+      [abs item i utilities / item i utilities ]] of voters
   ]
 end
 
@@ -685,7 +703,7 @@ collusion-growth
 collusion-growth
 0
 100
-100.0
+1.0
 1
 1
 links per tick
@@ -712,7 +730,7 @@ MONITOR
 873
 317
 Advantage From Collusion
-0
+\"TODO\"
 17
 1
 11
@@ -726,11 +744,28 @@ colluding-turtles-created
 colluding-turtles-created
 0
 10
-10.0
+0.0
 1
 1
 Colluding Turtles
 HORIZONTAL
+
+BUTTON
+53
+391
+172
+424
+Place a Colluder
+place-colluder
+NIL
+1
+T
+OBSERVER
+NIL
+C
+NIL
+NIL
+0
 
 @#$#@#$#@
 ## WHAT IS IT?
