@@ -1,6 +1,6 @@
 extensions[array matrix]
 breed[voters voter]
-breed[colluding-turtles colluding-turtle]
+breed[colluding-turtles colluding-turtle]  ;; JACOB: I think we should call these colluding-parties. More descriptive
 
 voters-own[
   utilities
@@ -64,7 +64,7 @@ end
 to set-majority-vs-minority-utilities
   let utility-sum-0 0
   ask voters[
-    ifelse utility-sum-0 < minority-power[
+    ifelse utility-sum-0 < minority-power[  ;; JACOB: add a comment here explaining that this keeps the utility sum close to 0 and why you want that.
       set utilities n-values (number-of-issues - 1) [random-normal 0 .1]
       set utilities fput random-normal .8 .05 utilities
       set utility-sum-0 utility-sum-0 + item 0 utilities
@@ -80,7 +80,7 @@ end
 to set-utilities
   (ifelse utility-distribution = "Normal mean = 0" [
     ask voters[
-      set utilities n-values number-of-issues [random-normal 0 .2]
+      set utilities n-values number-of-issues [random-normal 0 .2]  ;; JACOB: Make a comment describing why you chose these numbers for each distribution
     ]
     ]
     utility-distribution = "Normal mean != 0" [
@@ -113,7 +113,7 @@ to set-utilities
 end
 
 ; Moves voters and collusion turtles to their locations based of their utilities
-to refresh
+to refresh  ;; JACOB: give this a more descriptive name, like position-turtles or something. Also, move the button on the interface next to x-axis, y-axis sliders since that is (I think) the only time yo uwould need to manually do it
   clear-drawing
 
   ; Ensures the x-axis and y-axis are represented in the social policy vector.
@@ -164,16 +164,17 @@ to vote-QV
 
   ; Sum all advantages gained by the party turtles together
   set total-advantage  array:from-list n-values array:length social-policy-vector [0]
-  foreach issues [i -> array:set social-policy-vector i sum [item i advantage] of colluding-turtles]
 
+  foreach issues [i -> array:set social-policy-vector i sum [item i advantage] of colluding-turtles]  ;; JACOB: Why do the colluding-turtles actually vote? Doesn't that get taken care of by the votes of the voters which got set by the colluding turtle?
   ; sets social policy vector to be equal to the sum of all voting vectors
-  foreach issues [i -> array:set social-policy-vector i sum [item i votes] of voters]
+  foreach issues [i -> array:set social-policy-vector i sum [item i votes] of voters]  ;; JACOB: I'd put this in a function called set-social-policy-vector. That will make it clear what this is doing without comments (in general if I can put something in a self-describing function, I prefer that to commenting)
+
   collude
 end
 
-; Creates party turtles.  If a voter loses more than one dimension, it will create a colluding turtle.
+; Creates party turtles.  If a voter loses on more than one dimension, it will create a colluding turtle.
 ; These turtles will connect to voters with the same utility signs as their "utility doctrine". (The zeros in the doctrine mean that the turtle has no preference)
-; Party turtles require that the turtles linked to it must vote as stated in its doctrine. (For now, the doctrine requires that all voters will split their votes equally among these issues)
+; Party turtles require that the turtles linked to it must vote as stated in its doctrine. (For now, the doctrine requires that all voters will split their votes equally among these issues)  ;; JACOB: I this explanation is no longer true
 ; This should cause the group to have a greater influence than the sum of the individual voters
 to collude
   find-new-voters
@@ -185,16 +186,16 @@ to make-new-colluding-turtles
   let social-policy-list array:to-list social-policy-vector
 
   ; Find losing voters, which are voters that have lost in more than one dimension, and are not already part of a group
-  let lost-dimensions [ -> length filter [x -> x < 0] (map [[u spv] -> u * spv] utilities social-policy-list)]
-  let losing-voters voters with [runresult lost-dimensions > 1 and not any? link-neighbors]
-  let number-of-new-turtles min list colluding-turtles-created count losing-voters
+  let lost-dimensions [ -> length filter [x -> x < 0] (map [[u spv] -> u * spv] utilities social-policy-list)]  ;; JACOB: i'd abstract away the map part into a reporter called something like payoff-from-policies
+  let losing-voters voters with [runresult lost-dimensions > 1 and not any? link-neighbors] ;; JACOB: just make lost-dimensions a reporter instead of using runresult
+  let number-of-new-turtles min list colluding-turtles-created count losing-voters  ;; JACOB:  I mentioned this today, but still think it makes more sense to have losing voters search for a party and create a new one if a good one doesn't exist rather than "mandatign" how many parties are created per tick. Let's discuss it.
 
   ask n-of number-of-new-turtles losing-voters [
     create-colluder
   ]
 end
 
-to place-colluder
+to place-colluder  ;; JACOB: based on how this currently works, call it place-colluder-at-mouse. We'll probably change it later so that you don't have to use the keyboard
   if mouse-inside?[
     ; First find a turtle closest to the mouse
     let closest-turtle min-one-of voters [distance patch mouse-xcor mouse-ycor]
@@ -228,7 +229,7 @@ to find-new-voters
       ; If the voter is already apart of a colluding group...
       ifelse any? link-neighbors
       [
-        switch-colluding-group asking-turtle
+        switch-colluding-group asking-turtle  ;; JACOB: I don't like the name switch-colluding-group, because it sounds like a command, but the agent may not switch. Same with join-colluding-group. Change those names to reflect that the colluding-turtle is trying to get them to join, but they might not.
       ]
       ; If not...
       [
@@ -247,8 +248,8 @@ to switch-colluding-group [asking-turtle]
   let asking-turtle-utility-switch matrix:plus matrix:from-row-list (list [total-utility] of asking-turtle) normal-utility
   let asking-turtle-utility-stay matrix:from-row-list (list [normalized-utility] of asking-turtle)
   let current-turtle-utility-stay matrix:from-row-list (list [normalized-utility] of current-turtle)
-  let is-switching-greater-aligned? (sum matrix:get-row (matrix:times-element-wise normal-utility
-    (matrix:plus
+  let is-switching-greater-aligned? (sum matrix:get-row (matrix:times-element-wise normal-utility  ;; JACOB:: I think you should write some helper functions to make this cleaner. one easy one is to write a matrix dot product that abstracts away the  "sum matrix:get-row (matrix:times-element-wise"
+    (matrix:plus                                                                                     ;; JACOB: after writing some helper functions to clean it up, still write comments to explain each line
       (matrix:times matrix-normalize current-turtle-utility-switch ([count link-neighbors] of current-turtle - 1))
       (matrix:times matrix-normalize asking-turtle-utility-switch ([count link-neighbors] of asking-turtle + 1))
       (matrix:times current-turtle-utility-stay  -1  [count link-neighbors] of current-turtle)
@@ -278,7 +279,7 @@ to join-colluding-group [asking-turtle]
   let votes-vector matrix:from-row-list (list votes)
   let asking-turtle-utility-decline matrix:from-row-list (list [normalized-utility] of asking-turtle)
   let asking-turtle-utility-join matrix:plus matrix:from-row-list (list [total-utility] of asking-turtle) normal-utility
-  let is-switching-greater-aligned? (sum matrix:get-row (matrix:times-element-wise normal-utility
+  let is-switching-greater-aligned? (sum matrix:get-row (matrix:times-element-wise normal-utility  ;; JACOB: same as in switch-colluding-group. See if you can clean up with some helper functions, and then comment everything
     (matrix:minus
       (matrix:times matrix-normalize asking-turtle-utility-join ([count link-neighbors] of asking-turtle + 1))
       votes-vector
@@ -302,18 +303,23 @@ to vote-1p1v
 
   ; Each Voter will cast 1 if utility is greater than 0 for an issue, -1 otherwise
   foreach issues [i -> array:set social-policy-vector i sum
-    [ifelse-value
-      item i utilities = 0 [0]
+    [ifelse-value item i utilities = 0 ;; JACOB: to make this easier to understand, but the ifelse-value block in its own reporter
+      [0]
       [abs item i utilities / item i utilities ]] of voters
   ]
 end
 
 ; Party Turtle method. Sets the vote of all colluding members
 to vote-collude
-  ; Recording individual votes for bookkeeping
+  ; Recording individual votes for bookkeeping ;; JACOB: this is what individual votes would have been without collusion right? If so, make that clear
   ask link-neighbors [vote-truthful]
 
-  set individual-votes n-values array:length social-policy-vector [0]
+  set individual-votes n-values array:length social-policy-vector [0] ;; JACOB: I would call this individual-votes-sum
+  ;; JACOB: for the following codeyou might consider making individual-votes a 1-d matrix and then just doing:
+  ;;             ask link-neighbors [set individual-votes-sum individual-votes-sum matrix:+ matrix:from-row-list votes]. It would be shorter and I think easier to understand.
+  ;;        Alternatively you could use something like you did in vote-QV foro setting the social policy vector:
+  ;;                    foreach issues [i -> array:set individual-votes-sum i (sum [item i votes] of link-neighbors)]
+  ;;      whichever you choose, make sure to comment it to explain
   foreach [votes] of link-neighbors [
     v -> set individual-votes (map
       [[i-v x] -> i-v + x]
@@ -332,9 +338,10 @@ to vote-collude
     ]
   ]
   ; Recording colluding votes for bookkeeping
-  set votes map [x -> x * count link-neighbors] total-utility
+  set votes map [x -> x * count link-neighbors] total-utility  ;; JACOB: doesn't this only work if proportion-cooperate is 1? (unless you're recording what perfect collusion votes would have been, regardless of cooperation)
+
   ; Advantage is the votes the colluding party gains from colluding, as opposed to voting individually
-  set advantage (map [[v i-v] -> v - i-v] votes individual-votes)
+  set advantage (map [[v i-v] -> v - i-v] votes individual-votes) ;; JACOB: if you do make individual-votes a 1-D matrix, you could do matrix subtraction here instead
 end
 
 ; For the two issues that are shown on the grid, color the quadrant green if the outcome corresponding with it has the same sign.
@@ -352,7 +359,7 @@ end
 
 ; Sets votes to be a multiple of utilities
 to vote-truthful
-  let j sqrt (1 / sum map [u -> u ^ 2] utilities)
+  let j sqrt (1 / sum map [u -> u ^ 2] utilities)  ;; JACOB: give this a more descriptive name and maybe do the dividing in the map on the next line instead of here and then multiplying on the next line
   set votes map[u -> u * j] utilities
 end
 
@@ -494,7 +501,7 @@ number-of-issues
 number-of-issues
 2
 10
-2.0
+3.0
 1
 1
 Issues
@@ -560,7 +567,7 @@ x-axis
 x-axis
 0
 number-of-issues - 1
-0.0
+1.0
 1
 1
 NIL
@@ -575,7 +582,7 @@ y-axis
 y-axis
 0
 number-of-issues - 1
-1.0
+2.0
 1
 1
 NIL
@@ -656,7 +663,7 @@ CHOOSER
 utility-distribution
 utility-distribution
 "Normal mean = 0" "Normal mean != 0" "Bimodal one direction" "Bimodal all directions" "Indifferent Majority vs. Passionate Minority"
-0
+2
 
 TEXTBOX
 905
@@ -703,7 +710,7 @@ collusion-growth
 collusion-growth
 0
 100
-1.0
+2.0
 1
 1
 links per tick
@@ -1150,7 +1157,7 @@ false
 Polygon -7500403 true true 270 75 225 30 30 225 75 270
 Polygon -7500403 true true 30 75 75 30 270 225 225 270
 @#$#@#$#@
-NetLogo 6.1.0
+NetLogo 6.1.1-RC1
 @#$#@#$#@
 @#$#@#$#@
 @#$#@#$#@
