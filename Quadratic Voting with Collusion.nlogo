@@ -1,6 +1,6 @@
 extensions[array matrix]
 breed[voters voter]
-breed[colluding-turtles colluding-turtle]
+breed[colluding-parties colluding-party]
 
 voters-own[
   utilities
@@ -8,7 +8,7 @@ voters-own[
   strategic?
 ]
 
-colluding-turtles-own[
+colluding-parties-own[
   total-utility
   normalized-utility
   votes
@@ -63,8 +63,9 @@ end
 ; Therefore, the majority is slightly against issue 0 passing, while minority is heavily biased for the issue passing.
 to set-majority-vs-minority-utilities
   let utility-sum-0 0
+  ; "minority-power" is the proportion of the voting population
   ask voters[
-    ifelse utility-sum-0 < minority-power[
+    ifelse utility-sum-0 < minority-power * number-of-voters[
       set utilities n-values (number-of-issues - 1) [random-normal 0 .1]
       set utilities fput random-normal .8 .05 utilities
       set utility-sum-0 utility-sum-0 + item 0 utilities
@@ -135,7 +136,7 @@ to refresh
   ]
 
   ; Move the party turtles to be the average of all its members positions
-  ask colluding-turtles[
+  ask colluding-parties[
     set xcor mean [xcor] of link-neighbors
     set ycor mean [ycor] of link-neighbors
   ]
@@ -158,13 +159,13 @@ to vote-QV
   ]
 
   ; Ask party turtles to assign their members' votes
-  ask colluding-turtles [
+  ask colluding-parties [
     vote-collude
   ]
 
   ; Sum all advantages gained by the party turtles together
   set total-advantage  array:from-list n-values array:length social-policy-vector [0]
-  foreach issues [i -> array:set social-policy-vector i sum [item i advantage] of colluding-turtles]
+  foreach issues [i -> array:set social-policy-vector i sum [item i advantage] of colluding-parties]
 
   ; sets social policy vector to be equal to the sum of all voting vectors
   foreach issues [i -> array:set social-policy-vector i sum [item i votes] of voters]
@@ -176,18 +177,16 @@ end
 ; Party turtles require that the turtles linked to it must vote as stated in its doctrine. (For now, the doctrine requires that all voters will split their votes equally among these issues)
 ; This should cause the group to have a greater influence than the sum of the individual voters
 to collude
-  find-new-voters
-  make-new-colluding-turtles
-  ask colluding-turtles with [not any? link-neighbors] [die]
+  change-groups
+  make-new-colluding-parties
+  ask colluding-parties with [not any? link-neighbors] [die]
 end
 
-to make-new-colluding-turtles
-  let social-policy-list array:to-list social-policy-vector
+to make-new-colluding-parties
 
   ; Find losing voters, which are voters that have lost in more than one dimension, and are not already part of a group
-  let lost-dimensions [ -> length filter [x -> x < 0] (map [[u spv] -> u * spv] utilities social-policy-list)]
-  let losing-voters voters with [runresult lost-dimensions > 1 and not any? link-neighbors]
-  let number-of-new-turtles min list colluding-turtles-created count losing-voters
+  let losing-voters voters with [lost-dimensions > 1 and not any? link-neighbors]
+  let number-of-new-turtles min list colluding-parties-created count losing-voters
 
   ask n-of number-of-new-turtles losing-voters [
     create-colluder
@@ -200,13 +199,14 @@ to place-colluder
     let closest-turtle min-one-of voters [distance patch mouse-xcor mouse-ycor]
     ask closest-turtle
     [
+      ask my-links [die]
       create-colluder
     ]
   ]
 end
 
 to create-colluder
-  hatch-colluding-turtles 1 [
+  hatch-colluding-parties 1 [
     set color red
     set size 3
     set shape "turtle"
@@ -215,11 +215,12 @@ to create-colluder
     ; If the voter did not lose in that dimenion, then set to zero
     set total-utility normalize [utilities] of myself
     set normalized-utility total-utility
+    set individual-votes array:from-list n-values array:length social-policy-vector [0]
   ]
 end
 
-to find-new-voters
-  ask colluding-turtles [
+to change-groups
+  ask colluding-parties [
     ; Find voters that have agreeing utilities, and not already linked to
     let potential-colluder-set n-of collusion-growth voters
     ask potential-colluder-set [
@@ -228,17 +229,21 @@ to find-new-voters
       ; If the voter is already apart of a colluding group...
       ifelse any? link-neighbors
       [
-        switch-colluding-group asking-turtle
+        should-i-switch asking-turtle
       ]
       ; If not...
       [
-        join-colluding-group asking-turtle
+        should-i-join asking-turtle
       ]
     ]
   ]
+  ; Ask voters in colluding groups if it is advantageous to leave the group
+  ask voters with [any? link-neighbors][
+    should-i-leave
+  ]
 end
 
-to switch-colluding-group [asking-turtle]
+to should-i-switch [asking-turtle]
   let normal-utility matrix-normalize matrix:from-row-list (list utilities)
   let current-turtle one-of link-neighbors
   ; The following code checks if the vote total between the two colluding groups is more aligned if the agent switches or not.
@@ -247,14 +252,14 @@ to switch-colluding-group [asking-turtle]
   let asking-turtle-utility-switch matrix:plus matrix:from-row-list (list [total-utility] of asking-turtle) normal-utility
   let asking-turtle-utility-stay matrix:from-row-list (list [normalized-utility] of asking-turtle)
   let current-turtle-utility-stay matrix:from-row-list (list [normalized-utility] of current-turtle)
-  let is-switching-greater-aligned? (sum matrix:get-row (matrix:times-element-wise normal-utility
+  let is-switching-greater-aligned? matrix-dot-product normal-utility
     (matrix:plus
       (matrix:times matrix-normalize current-turtle-utility-switch ([count link-neighbors] of current-turtle - 1))
       (matrix:times matrix-normalize asking-turtle-utility-switch ([count link-neighbors] of asking-turtle + 1))
       (matrix:times current-turtle-utility-stay  -1  [count link-neighbors] of current-turtle)
       (matrix:times asking-turtle-utility-stay  -1  [count link-neighbors] of asking-turtle))
-    ) 0
-  ) > 0
+  > 0
+
   ; If the total vote vector is more algined with the agents utilities from Switching, then switch
   if is-switching-greater-aligned? [
     ask my-links [die]
@@ -270,29 +275,54 @@ to switch-colluding-group [asking-turtle]
   ]
 end
 
-
-to join-colluding-group [asking-turtle]
+to should-i-join [asking-turtle]
   let normal-utility matrix-normalize matrix:from-row-list (list utilities)
   ; The following code checks if the vote total of the group and the agent is more aligned with the agent if he joins or not.
   ; See the section "Averaged Colluding Groups" in Notion for details on how the vector math works.
   let votes-vector matrix:from-row-list (list votes)
   let asking-turtle-utility-decline matrix:from-row-list (list [normalized-utility] of asking-turtle)
   let asking-turtle-utility-join matrix:plus matrix:from-row-list (list [total-utility] of asking-turtle) normal-utility
-  let is-switching-greater-aligned? (sum matrix:get-row (matrix:times-element-wise normal-utility
+  let is-joining-greater-aligned? matrix-dot-product normal-utility
     (matrix:minus
       (matrix:times matrix-normalize asking-turtle-utility-join ([count link-neighbors] of asking-turtle + 1))
       votes-vector
       (matrix:times asking-turtle-utility-decline [count link-neighbors] of asking-turtle)
-    )) 0
-  ) > 0
+    )
+  > 0
 
-  ; If the total vote vector is more aligned with the agents utilities, switch
-  if is-switching-greater-aligned?[
-    create-link-with asking-turtle[set color yellow]
+  ; If the total vote vector is more aligned with the agents utilities, join
+  if is-joining-greater-aligned?[
+    create-link-with asking-turtle [set color yellow]
     ask asking-turtle [
       set total-utility matrix:get-row asking-turtle-utility-join 0
       set normalized-utility normalize total-utility
     ]
+  ]
+end
+
+to should-i-leave
+  let current-turtle one-of link-neighbors
+  let normal-utility matrix-normalize matrix:from-row-list (list utilities)
+  ; The following code checks if the vote total of the group and the agent is more aligned with the agent if he joins or not.
+  ; See the section "Averaged Colluding Groups" in Notion for details on how the vector math works.
+  ; Generate Votes vector
+  vote-truthful
+  let votes-vector matrix:from-row-list (list votes)
+  let current-turtle-utility-remain matrix:from-row-list (list [normalized-utility] of current-turtle)
+  let current-turtle-utility-leave matrix:minus matrix:from-row-list (list [total-utility] of current-turtle) normal-utility
+  let is-leaving-greater-aligned? matrix-dot-product normal-utility
+    (matrix:plus
+      (matrix:times matrix-normalize current-turtle-utility-leave ([count link-neighbors] of current-turtle - 1))
+      votes-vector
+      (matrix:times current-turtle-utility-remain -1 [count link-neighbors] of current-turtle))
+  >= 0
+
+  if is-leaving-greater-aligned? [
+    ask current-turtle [
+      set total-utility matrix:get-row current-turtle-utility-leave 0
+      set normalized-utility normalize total-utility
+    ]
+    ask my-links [die]
   ]
 end
 
@@ -313,12 +343,7 @@ to vote-collude
   ; Recording individual votes for bookkeeping
   ask link-neighbors [vote-truthful]
 
-  set individual-votes n-values array:length social-policy-vector [0]
-  foreach [votes] of link-neighbors [
-    v -> set individual-votes (map
-      [[i-v x] -> i-v + x]
-      individual-votes v)
-  ]
+  foreach issues [i -> array:set individual-votes i sum [item i votes] of link-neighbors]
 
   ; Assign votes
   ask link-neighbors [
@@ -334,20 +359,39 @@ to vote-collude
   ; Recording colluding votes for bookkeeping
   set votes map [x -> x * count link-neighbors] total-utility
   ; Advantage is the votes the colluding party gains from colluding, as opposed to voting individually
-  set advantage (map [[v i-v] -> v - i-v] votes individual-votes)
+  set advantage (map [[v i-v] -> v - i-v] votes array:to-list individual-votes)
 end
 
 ; For the two issues that are shown on the grid, color the quadrant green if the outcome corresponding with it has the same sign.
 to show-winners
   ask patches with [pxcor != 0  and  pycor != 0]  [set pcolor black]
+  let x-sign 0
+  let y-sign 0
 
   ; Find whether or not the sum of votes on x and y axises were positive or negative
-  let x-sign (array:item social-policy-vector x-axis) / abs (array:item social-policy-vector  x-axis)
-  let y-sign (array:item social-policy-vector y-axis) / abs (array:item social-policy-vector y-axis )
+  if array:item social-policy-vector x-axis != 0
+  [
+    set x-sign (array:item social-policy-vector x-axis) / abs (array:item social-policy-vector x-axis)
+  ]
+  if array:item social-policy-vector y-axis != 0
+  [
+    set y-sign (array:item social-policy-vector y-axis) / abs (array:item social-policy-vector y-axis)
+  ]
 
   ; Set the appropriate quadrant green
-  ask patches with [pxcor * x-sign >= 1 and pycor * y-sign >= 1]
-  [set pcolor green - 3]
+  (ifelse x-sign != 0 and y-sign != 0
+  [
+    ask patches with [pxcor * x-sign >= 1 and pycor * y-sign >= 1][set pcolor green - 3]
+  ]
+  y-sign != 0
+  [
+    ask patches with [pycor * y-sign >= 1 and pxcor != 0][set pcolor green - 3]
+  ]
+  x-sign != 0
+  [
+    ask patches with [pxcor * x-sign >= 1 and pycor != 0][set pcolor green - 3]
+  ])
+
 end
 
 ; Sets votes to be a multiple of utilities
@@ -371,13 +415,25 @@ end
 ; Given a vector, Computes a vector with a magnitude of 1
 to-report normalize [vector]
   let sqrt-squared-sum sqrt sum map [u -> u ^ 2] vector
-  report map [u -> u / sqrt-squared-sum ] vector
+  report ifelse-value sqrt-squared-sum != 0  [
+    map [u -> u / sqrt-squared-sum ] vector
+  ][
+    vector
+  ]
 end
 
 ; Given a matrix row, compute a vect
 to-report matrix-normalize [matrix-row]
-  let sqrt-squared-sum sqrt sum map [u -> u ^ 2] item 0 matrix:to-row-list matrix-row
-  report matrix:times matrix-row sqrt-squared-sum
+  let sqrt-squared-sum sqrt sum map [u -> u ^ 2] matrix:get-row matrix-row 0
+  report ifelse-value sqrt-squared-sum != 0 [
+    matrix:times matrix-row (1 / sqrt-squared-sum)
+  ][
+    matrix-row
+  ]
+end
+
+to-report matrix-dot-product [a b]
+  report sum matrix:get-row (matrix:times-element-wise a b) 0
 end
 
 ; Utility gain reporter for monitor
@@ -405,6 +461,11 @@ to delete-voters
     ask patch mouse-xcor mouse-ycor [
       ask voters in-radius 4 [die]
   ]
+end
+
+; Voter reporter. Reports the number of dimensions the voter lost on
+to-report lost-dimensions
+  report length filter [x -> x < 0] (map [[u spv] -> u * spv] utilities array:to-list social-policy-vector)
 end
 
 to-report maximal-utility?
@@ -494,7 +555,7 @@ number-of-issues
 number-of-issues
 2
 10
-2.0
+10.0
 1
 1
 Issues
@@ -656,7 +717,7 @@ CHOOSER
 utility-distribution
 utility-distribution
 "Normal mean = 0" "Normal mean != 0" "Bimodal one direction" "Bimodal all directions" "Indifferent Majority vs. Passionate Minority"
-0
+4
 
 TEXTBOX
 905
@@ -676,9 +737,9 @@ SLIDER
 minority-power
 minority-power
 0
-100
-100.0
-10
+1
+0.1
+.1
 1
 NIL
 HORIZONTAL
@@ -703,7 +764,7 @@ collusion-growth
 collusion-growth
 0
 100
-1.0
+100.0
 1
 1
 links per tick
@@ -738,16 +799,16 @@ Advantage From Collusion
 SLIDER
 0
 286
-249
+274
 319
-colluding-turtles-created
-colluding-turtles-created
+colluding-parties-created
+colluding-parties-created
 0
 10
 0.0
 1
 1
-Colluding Turtles
+Colluding Parties
 HORIZONTAL
 
 BUTTON
