@@ -1,4 +1,4 @@
-extensions[matrix]
+extensions[array]
 
 breed[voters voter]
 
@@ -737,7 +737,7 @@ Turn up the proportion of strategic voters to 1, increase the percentage of the 
 
 ## EXTENDING THE MODEL
 
-QV may be suspectable to misinformation of ones own utilities, since votes spent on one issue will mean they aren't spent on another.  Can you implement an agent that can influence voters?
+QV may be suspectable to misinformation of ones own utilities, since votes spent on one issue will mean they aren't spent on another.  Can you implement an agent that can influence voters, and change how they percieve their utilities?
 
 ## NETLOGO FEATURES
 
@@ -749,7 +749,8 @@ See Quadratic Voting with Collusion
 
 ## CREDITS AND REFERENCES
 
-(a reference to the model's URL on the web if it has one, as well as any other necessary credits, citations, and links)
+You can find more information here:
+https://www.notion.so/qvoting/Home-5664c87e234a4684adc862d1448dcc77
 @#$#@#$#@
 default
 true

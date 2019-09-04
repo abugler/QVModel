@@ -79,6 +79,8 @@ end
 
 ; Assigns the voters utilities according to the current utility distribution
 to set-utilities
+  ; The means for the utilities are chosen mostly arbitrarily
+  ; The main qualification was that all voters should have a utility under 1, so their utility can be represented inside the view accurately.
   (ifelse utility-distribution = "Normal mean = 0" [
     ask voters[
       set utilities n-values number-of-issues [random-normal 0 .2]
@@ -245,6 +247,7 @@ end
 
 to should-i-switch [asking-turtle]
   let normal-utility matrix-normalize matrix:from-row-list (list utilities)
+  ; A voter should only have at the most one link neighbor, that being a colluding-party
   let current-turtle one-of link-neighbors
   ; The following code checks if the vote total between the two colluding groups is more aligned if the agent switches or not.
   ; See the section "Averaged Colluding Groups" in Notion for details on how the vector math works.
@@ -279,6 +282,7 @@ to should-i-join [asking-turtle]
   let normal-utility matrix-normalize matrix:from-row-list (list utilities)
   ; The following code checks if the vote total of the group and the agent is more aligned with the agent if he joins or not.
   ; See the section "Averaged Colluding Groups" in Notion for details on how the vector math works.
+  vote-truthful
   let votes-vector matrix:from-row-list (list votes)
   let asking-turtle-utility-decline matrix:from-row-list (list [normalized-utility] of asking-turtle)
   let asking-turtle-utility-join matrix:plus matrix:from-row-list (list [total-utility] of asking-turtle) normal-utility
@@ -301,6 +305,7 @@ to should-i-join [asking-turtle]
 end
 
 to should-i-leave
+    ; A voter should only have at the most one link neighbor, that being a colluding-party
   let current-turtle one-of link-neighbors
   let normal-utility matrix-normalize matrix:from-row-list (list utilities)
   ; The following code checks if the vote total of the group and the agent is more aligned with the agent if he joins or not.
@@ -357,7 +362,7 @@ to vote-collude
     ]
   ]
   ; Recording colluding votes for bookkeeping
-  set votes map [x -> x * count link-neighbors] total-utility
+  set votes map [x -> x * count link-neighbors] normalized-utility
   ; Advantage is the votes the colluding party gains from colluding, as opposed to voting individually
   set advantage (map [[v i-v] -> v - i-v] votes array:to-list individual-votes)
 end
@@ -499,7 +504,7 @@ to-report shapley-value
   ; Since no colluding has been done when there is only one colluding member, report 0
   if count link-neighbors <= 1 [report 0]
 
-  let p n-values length social-policy-vector [0]
+  let p n-values array:length social-policy-vector [0]
   ask link-neighbors [set p (map [[u x] -> u + x] utilities p)]
   report (map [[a t-a x] -> a / t-a * x] advantage total-advantage p )
 end
@@ -555,7 +560,7 @@ number-of-issues
 number-of-issues
 2
 10
-10.0
+2.0
 1
 1
 Issues
@@ -621,7 +626,7 @@ x-axis
 x-axis
 0
 number-of-issues - 1
-0.0
+1.0
 1
 1
 NIL
@@ -636,7 +641,7 @@ y-axis
 y-axis
 0
 number-of-issues - 1
-1.0
+0.0
 1
 1
 NIL
@@ -717,7 +722,7 @@ CHOOSER
 utility-distribution
 utility-distribution
 "Normal mean = 0" "Normal mean != 0" "Bimodal one direction" "Bimodal all directions" "Indifferent Majority vs. Passionate Minority"
-4
+0
 
 TEXTBOX
 905
@@ -764,7 +769,7 @@ collusion-growth
 collusion-growth
 0
 100
-100.0
+25.0
 1
 1
 links per tick
@@ -799,7 +804,7 @@ Advantage From Collusion
 SLIDER
 0
 286
-274
+249
 319
 colluding-parties-created
 colluding-parties-created
@@ -846,19 +851,15 @@ How an agent votes is affected by their utility value for each issue. The Utilit
 Agents can be grouped into the following three categories:
 
   * Truthful Voters (Marked by Purple Agents)
-  * Strategic Voters (Marked by Pink Agents)
-  * Colluding Voters (Marked by a yellow link to a Turtle-Shaped Agent)
+  * Colluding Voters (Marked by a link to a Turtle-Shaped Agent)
 
 Each of the categories of voters follow different rules when voting.
 
 Truthful voters will map their utilites of each issue to votes, so their votes are proportional to their utilities. 
 
-Strategic Voters will act like Truthful voters, unless a poll has been taken. If a poll has been taken, they will multiply each of their Truthful Votes by a calculated "marginal pivotality", which is an estimate on how likely the agent is to flip the outcome in their favor.  The marginal pivotality is calculated from the poll results. If the calculated marginal pivotality is extremely close to zero, a strategic voter will vote like the truthful voter.
+Collduing Voters will split their votes among several different issues, according to the colluding group that they are apart of.  
 
-Collduing Voters will split their votes equally among several different issues, according to the colluding group that they are apart of.  
-
-Colluding groups will form when an agent loses in at least two referenda, and the colluding group will split their votes among the referenda the initial voter lost in. Colluding groups will always be looking for more voters to join, and if they find a voter that has agreeing utilities, and the colluding groups' utilities match the voter's utilities more than it's current group, it will recruit the voter. 
-
+Colluding groups form when a voter loses in at least two referenda.  All members in the colluding group will vote porportional to the normalized sum of utilities of members in the group. The colluding group will ask other voters to join the group, and if the overall vote total between the group and the asked voter is more aligned with the voters utilities when he joins, the voter will join the group, and shift the normalize sum of utilities toward it's own. 
 ## HOW TO USE IT
 
 Before pressing setup(hotkey: s), set the number of voters, proportion of strategic voters, and the number of issues to vote on. 
@@ -875,36 +876,32 @@ Some additional options are noted in "Things to try"
 
 ## THINGS TO TRY
 
-Besides QV, this model also has other supplementary features, Polling and Collusion.
-
-Under normal circumstances, the agents will vote according to their utilities. However, when a poll of the population is taken "strategic" voters will use the information from the last poll to inform their choices.  
-
-Collusion is when agents with similar and non-conflicting interests will split their votes to have a greater voice. For example, agents 1 and 2 want issues 1 and 2 to be passed respectively, and do not care about any other issue passing.  Individually, each agent will spend all their voice credits toward each issue they care about. However, each voter instead can collude, and split their votes between the two issues, increase their collective say both issues. 
-
 Try changing the utility distribution.  Notice that the in the Minority v. Majority distribution the minority will likely win if there are more issues.  Can you guess why? In the Normal mean != 0 distribution there isn't much a difference between the strategic voters and the truthful voters.  Why is that?
 
 Flipping the QV? switch will toggle the model between QV and one person one vote (1p1v).  Observe the differences between 1p1v and QV, especially in the Minority vs. Majority scenario. 
 
-Turn up the proportion of strategic voters to 1, increase the percentage of the population polled, and press "Poll and Vote" repeatedly. Sometimes the results will oscillate between several different outcomes.  The Yellow star represents the result of the poll. 
+Try changing the number of Colluding Turtles created per vote.  When you increase the number of Colluding turtles created per vote, notice how quickly the outcome flips when the utility distribution is Normal mean = 0 or Bimodal one direction, and how it can easily flip back in the other direction. 
 
-Try changing the number of Colluding Turtles created per vote.  When you increase the number of Colluding turtles created per second, notice how quickly the outcome flips when the utility distribution is Normal mean = 0 or Bimodal one direction, and how it can easily flip back in the other direction. 
-
+Try creating some colluding turtles, and then set the number of colluding turtles per vote to zero.  Notice that only several colluding turtles will survive, as the larger one may take the voters of the smaller one. 
 
 ## EXTENDING THE MODEL
 
-QV may be suspectable to misinformation of ones own utilities, since votes spent on one issue will mean they aren't spent on another.  Can you implement an agent that can influence voters?
+QV may be suspectable to misinformation of ones own utilities, since votes spent on one issue will mean they aren't spent on another.  Can you implement an agent that can influence voters, and change how they percieve their utilities?
 
 ## NETLOGO FEATURES
 
-This model extensively uses the "map" command with multiple array inputs, since the position in a list of utilities or results matters. A challenge when making this model was the readbility as a result of this.
+This model extensively uses the "map" command with multiple list inputs, since the position in a list of utilities or results matters. A challenge when making this model was the readbility as a result of this.
+
+The array extension was used to speed up the model.  The "social policy vector" (the outcome) uses the array datatype.  The matrix extension is used to make the vector math more readable than if only maps were used. 
 
 ## RELATED MODELS
 
-TODO: Finding voting models
+See Quadratic voting with polling. 
 
 ## CREDITS AND REFERENCES
 
-(a reference to the model's URL on the web if it has one, as well as any other necessary credits, citations, and links)
+You can find more information here:
+https://www.notion.so/qvoting/Home-5664c87e234a4684adc862d1448dcc77
 @#$#@#$#@
 default
 true
@@ -1446,6 +1443,39 @@ set social-policy-vector poll</go>
     </enumeratedValueSet>
     <enumeratedValueSet variable="collusion-growth">
       <value value="5"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="How-much-need-to-collude" repetitions="500" runMetricsEveryStep="true">
+    <setup>setup
+ask n-of 50 voters[
+create-colluder
+]</setup>
+    <go>go</go>
+    <timeLimit steps="50"/>
+    <metric>total-utility-gain</metric>
+    <metric>total-advantage</metric>
+    <enumeratedValueSet variable="utility-distribution">
+      <value value="&quot;Normal mean = 0&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="number-of-voters">
+      <value value="500"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="proportion-cooperate">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="QV?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="number-of-issues">
+      <value value="2"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="colluding-parties-created">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="collusion-growth">
+      <value value="25"/>
     </enumeratedValueSet>
   </experiment>
 </experiments>
