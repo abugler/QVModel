@@ -1,4 +1,3 @@
-extensions[array]
 
 breed[voters voter]
 
@@ -58,10 +57,6 @@ end
 
 ; Spawns in voters according to a utility distribution
 to spawn-voters
-  if utility-distribution = "Indifferent Majority vs. Passionate Minority"[
-    spawn-voters-majority-vs-minority
-    stop
-  ]
   create-voters number-of-voters [
     set color violet
     set strategic? random-float 1 < proportion-of-strategic-voters
@@ -74,34 +69,20 @@ to spawn-voters
   ]
 end
 
-; Spawns voters for the majority vs. minority distribution
+; Assigns voters utilities for the majority vs. minority distribution
 ; The Majority will have a mean utility on the zero axis of -.05, while the Minority will have a mean utility on the zero axis of .8
 ; Therefore, the majority is slightly against issue 0 passing, while minority is heavily biased for the issue passing.
-to spawn-voters-majority-vs-minority
-  ; Record the total utility on the 0-axis
+to set-majority-vs-minority-utilities
   let utility-sum-0 0
-  ; Written Iteratively to keep track the total utility
-  while [count voters != number-of-voters][
-    create-voters 1 [
-
-      ; Set strategic?
-      set strategic? random-float 1 < proportion-of-strategic-voters
-      ifelse strategic? [
-        set color pink
-      ][
-        set color violet
-      ]
-
-      ; Assigns agent to majority or minority
-      ; If the total utility on the 0 axis is below minority power, then the agent spawned will be part of the minority.
-      ; Otherwise it will be part of the majority.
-      ifelse utility-sum-0 < minority-power [
-        set utilities n-values (number-of-issues - 1) [random-normal 0 .1]
-        set utilities fput random-normal .8 .05 utilities]
-      [
-        set utilities n-values (number-of-issues - 1) [random-normal 0 .3]
-        set utilities fput random-normal -.05 .05 utilities
-      ]
+  ; "minority-power" is the proportion of the voting population
+  ask voters[
+    ifelse utility-sum-0 < minority-power * number-of-voters[
+      set utilities n-values (number-of-issues - 1) [random-normal 0 .1]
+      set utilities fput random-normal .8 .05 utilities
+      set utility-sum-0 utility-sum-0 + item 0 utilities
+    ][
+      set utilities n-values (number-of-issues - 1) [random-normal 0 .3]
+      set utilities fput random-normal -.05 .05 utilities
       set utility-sum-0 utility-sum-0 + item 0 utilities
     ]
   ]
@@ -109,27 +90,39 @@ end
 
 ; Assigns the voters utilities according to the current utility distribution
 to set-utilities
+  ; The means for the utilities are chosen mostly arbitrarily
+  ; The main qualification was that all voters should have a utility under 1, so their utility can be represented inside the view accurately.
   (ifelse utility-distribution = "Normal mean = 0" [
-    set utilities n-values number-of-issues [random-normal 0 .2]
+    ask voters[
+      set utilities n-values number-of-issues [random-normal 0 .2]
+    ]
     ]
     utility-distribution = "Normal mean != 0" [
-      set utilities n-values number-of-issues [random-normal .2 .2]
+      ask voters[
+        set utilities n-values number-of-issues [random-normal .2 .2]]
     ]
     utility-distribution = "Bimodal one direction"[
-      set utilities n-values (number-of-issues - 1) [random-normal 0 .2]
-      ifelse random-float  1 > .5 [
-        set utilities fput random-normal .3 .1 utilities
-      ][
-        set utilities fput random-normal -.3 .1 utilities
+      ask voters[
+        set utilities n-values (number-of-issues - 1) [random-normal 0 .2]
+        ifelse random-float  1 > .5 [
+          set utilities fput random-normal .3 .1 utilities
+        ][
+          set utilities fput random-normal -.3 .1 utilities
+        ]
       ]
     ]
-    utility-distribution = "Bimodal all directions"[
-      ifelse random-float 1 > .5[
-        set utilities n-values number-of-issues [random-normal .3 .1]
-      ][
-        set utilities n-values number-of-issues [random-normal -.3 .1]
+      utility-distribution = "Bimodal all directions"[
+        ask voters[
+          ifelse random-float 1 > .5[
+            set utilities n-values number-of-issues [random-normal .3 .1]
+          ][
+            set utilities n-values number-of-issues [random-normal -.3 .1]
+          ]
+        ]
       ]
-    ]
+      utility-distribution = "Indifferent Majority vs. Passionate Minority"[
+        set-majority-vs-minority-utilities
+      ]
   )
 end
 
@@ -378,7 +371,7 @@ number-of-voters
 number-of-voters
 0
 10000
-2000.0
+2100.0
 100
 1
 voters
@@ -408,7 +401,7 @@ number-of-issues
 number-of-issues
 2
 10
-10.0
+2.0
 1
 1
 Issues
@@ -667,9 +660,9 @@ SLIDER
 minority-power
 minority-power
 0
-100
-100.0
-10
+1
+0.9
+.1
 1
 NIL
 HORIZONTAL
@@ -691,7 +684,6 @@ map [x -> precision x 2] total-utility-gain
 This a model of Quadratic Voting, otherwise known as QV. QV has the following properties:
 
   * Each Voting Agent is allocated an equal amount of "Voice Credits", which may be used to purchase votes. 
-  * During each election, there exists a number of referenda can to vote on. Each referendum can be either be voted for, or against. 
   * A Voting Agent may buy x votes for or against an referendum, by spending x<sup>2</sup> voice credits.
 
 For example, if each agent has 100 voice credits, it may be inclined to spend all 100 voice credits on 10 vote for a single referendum, if it only cares about that specific referendum. If an agent wishes to split his 100 voice credits on 4 different referenda, he can spend 25 voice credits on each, gaining 5 votes for each referenda.  
