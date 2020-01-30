@@ -1,146 +1,191 @@
+; ToDo
+; - Figure out a way to have the model resut without having to import python each time during behavior space to speed things up. Maybe for each parameter set, run trials within one run.
+
+
 extensions [py]
 breed [voters voter]
 breed [referenda referendum]  ;; JACOB: based on the other code, these should be called [referenda referendum] instead of referenda.
 voters-own [
-  utilities
+  utility
   voice-credits
   last-voice-credits-spent
-  perceived-p-value
+  votes-cast
+  perceived-pivotality
 ]
-referenda-own [outcome]
+referenda-own [
+  votes-list
+  sum-of-votes
+  outcome
+]
+
 globals[
-  last-votes-for
-  last-votes-against
-  last-referendum
-  last-outcome
-  list-of-votes
+  the-referendum
   a-value
   b-value
 ]
 
+
+;***************SETUP PROCEDURES*******************
 to setup
   clear-all
   reset-ticks
   spawn-voters-with-utilities
   spawn-referenda
-  ask patches [set pcolor grey]
-  set last-referendum 0
+  set the-referendum one-of referenda
+  draw-axes-mean-and-median-utilities
   py:setup py:python
   py:run "import scipy.stats as stats"
 end
 
+to reset
+  clear-all
+  reset-ticks
+  spawn-voters-with-utilities
+  spawn-referenda
+  set the-referendum one-of referenda
+  draw-axes-mean-and-median-utilities
+end
+
+;; spawns voters with random utilities for each issue
+to spawn-voters-with-utilities
+
+
+  create-voters round (number-of-voters * (1 - minority-fraction)) [
+    set utility random-normal majority-mean-utility majority-utility-stdev ; If the utility > 0, voter wants the referendum to pass and vice versa. The larger abs utility is, the more the voter cares.
+    set color grey
+    set shape "face neutral"
+    set xcor utility
+  ]
+
+  create-voters round (number-of-voters * minority-fraction) [
+    set utility random-normal minority-mean-utility minority-utility-stdev ; If the utility > 0, voter wants the referendum to pass and vice versa. The larger abs utility is, the more the voter cares.
+    set color grey
+    set shape "face neutral"
+    set xcor utility
+  ]
+
+
+end
+
+to spawn-referenda
+  ask patches with [pycor = max-pycor and pxcor = 0][
+    sprout-referenda 1 [
+      set shape "square"
+      set color white
+      set votes-list (list)
+      set size 2
+  ]]
+end
+
+to draw-axes-mean-and-median-utilities
+  draw-line 0 (min-pycor - 0.5) 0 white false ""  0 ; y-axis
+  draw-line (min-pxcor - 0.5) 0 90 white false ""  0; x-axis
+
+  draw-line (mean [utility] of voters) (min-pycor - 0.5) 0 green true "mean utility"  2
+  draw-line (median [utility] of voters) (min-pycor - 0.5) 0 yellow true "median utility"  3
+
+end
+
+to draw-line [x-cor y-cor direction lcolor dotted? l-label backtrack]
+  crt 1 [
+    set size 0
+    set label l-label
+    set color lcolor
+    set label-color color
+    set xcor x-cor
+    set ycor y-cor
+    set heading direction
+    pen-down
+    ifelse dotted? [
+      let dots 20
+      let dot-length world-width / (dots * 2)
+      repeat dots [
+        pen-down
+        fd dot-length
+        pen-up
+        fd dot-length
+      ]
+
+    ] [
+      fd world-width
+      fd .99
+    ]
+    pen-up
+    back backtrack
+  ]
+end
+;***************GO PROCEDURES*******************
 to go
-  ;; JACOB: instead of making active-referendum a number and using it to index the referenda (which should be called referenda),
-  ;; you can just use one-of and make active-referendum an actual referendum (currently referenda) agent and ask it to do
-  ;; stuff directly.  See comment below that starts "if you make active-referendum an agent"
-  let active-referendum one-of referenda
-  ifelse quadratic-voting?
-  [vote-QV active-referendum]
-  [vote-1p1v active-referendum]
-  ; update-happiness
+  (ifelse
+    voting-mechanism = "QV" [vote-QV the-referendum]
+    voting-mechanism = "1p1v" [vote-1p1v the-referendum])
+
+  ask voters [visualize-votes]
+  ask the-referendum [visualize-outcome]
   tick
 end
 
-to vote-1p1v [active-referendum]
-  set list-of-votes (list)
-  let votes-for 0
-  let votes-against 0
 
-  change-referenda-position active-referendum
+
+to vote-1p1v [active-referendum] ;; Procedure for voters to vote using 1p1v mechanism
+  let list-of-votes (list)
 
   ask voters [
-    let votes ifelse-value utilities = 0 [0][1]
-
-    (ifelse votes = 0
-      [
-        set color white
-        set list-of-votes fput 0 list-of-votes
-      ]
-
-      utilities > 0
-      [
-        set votes-for votes-for + votes
-        set list-of-votes fput votes list-of-votes
-        set color  green
-      ]
-      utilities < 0
-      [
-        set votes-against votes-against + votes
-        set list-of-votes fput (-1 * votes) list-of-votes
-        set color red
-      ]
-    )
+    set votes-cast sign-of utility
+    set list-of-votes fput votes-cast list-of-votes
   ]
 
-  ask active-referendum [  ;; JACOB: if you make active-referendum an agent you can just ask active-referenum instead of needing a with statement here
-    if votes-for > votes-against
-    [
-      set outcome true
+  ask active-referendum [
+    set votes-list list-of-votes
+    set sum-of-votes sum list-of-votes
+
+    ifelse sum-of-votes > 0 [
+      set outcome 1
       set color green
-    ]
-    if votes-against > votes-for[
-      set outcome false
+    ] [
+      set outcome -1
       set color red
     ]
-    set last-outcome outcome
   ]
-  set last-votes-for votes-for
-  set last-votes-against votes-against
-  set last-referendum active-referendum
+
 end
 
 to vote-QV [active-referendum]
-  set list-of-votes (list)
-  let votes-for 0
-  let votes-against 0
+  let list-of-votes (list)
 
   assign-p-values-to-voters
-  change-referenda-position active-referendum
 
   ask voters [
-    let votes sqrt voice-credits-spent active-referendum
-
-    (ifelse votes = 0
-      [
-        set color white
-        set list-of-votes fput 0 list-of-votes
-      ]
-
-      utilities > 0
-      [
-        set votes-for votes-for + votes
-        set list-of-votes fput votes list-of-votes
-        set color scale-color green votes 10 0
-      ]
-      utilities < 0
-      [
-        set votes-against votes-against + votes
-        set list-of-votes fput (-1 * votes) list-of-votes
-        set color scale-color red votes 10 0
-      ]
-    )
+    set votes-cast (sign-of utility) * sqrt voice-credits-spent active-referendum
+    set list-of-votes fput votes-cast list-of-votes
   ]
 
-  ask active-referendum [  ;; JACOB: if you make active-referendum an agent you can just ask active-referenum instead of needing a with statement here
-    if votes-for > votes-against
-    [
-      set outcome true
+  ask active-referendum [
+    set votes-list list-of-votes
+    set sum-of-votes sum list-of-votes
+    ifelse sum-of-votes > 0 [
+      set outcome 1
       set color green
-    ]
-    if votes-against > votes-for[
-      set outcome false
+    ] [
+      set outcome -1
       set color red
     ]
-    set last-outcome outcome
   ]
-  set last-votes-for votes-for
-  set last-votes-against votes-against
-  set last-referendum active-referendum
+end
+
+
+to-report sign-of [n] ;; reports the sign of the number (0 if it is zero)
+  report (
+    ifelse-value
+    n = 0 [0]
+    n > 0 [1]
+    n < 0 [-1]
+  )
 end
 
 to assign-p-values-to-voters
   ifelse marginal-pivotality = 1 or variance-of-perceived-pivotality = 0[
-    ask voters [set perceived-p-value marginal-pivotality]
+    ask voters [set perceived-pivotality marginal-pivotality]
   ]
   [
     ; using a beta dist for p-value
@@ -157,104 +202,83 @@ to assign-p-values-to-voters
     py:set "number_of_voters" number-of-voters
     let list-of-p py:runresult "stats.beta.rvs(a, b, size = number_of_voters)"
 
-    ask voters [set perceived-p-value item who list-of-p]
+    ask voters [set perceived-pivotality item who list-of-p]
   ]
 end
 
-to change-referenda-position [active-referendum]
-  ask referenda [set ycor 40]
-  ask active-referendum [set ycor ycor - 2]
-end
 
 to-report voice-credits-spent [active-referendum] ; voter function
-  let spent-voice-credits ifelse-value limit-votes?
-  [min list ( (utilities * perceived-p-value) ^ 2) voice-credits ]
-  [(utilities * perceived-p-value) ^ 2]
+  let spent-voice-credits ifelse-value limit-votes? [
+    min list ( (utility * perceived-pivotality) ^ 2) voice-credits
+  ] [
+    (utility * perceived-pivotality) ^ 2
+  ]
   set last-voice-credits-spent spent-voice-credits
-  if limit-votes? [set voice-credits voice-credits + voice-credits-given-per-tick - spent-voice-credits]
   report spent-voice-credits
 end
 
-to-report calculate-p-value
-  ifelse marginal-pivotality != 1
-  [
-    py:set "a" a-value
-    py:set "b" b-value
-    report py:runresult "stats.beta.rvs(a, b)"
-  ]
-  [
-    report 1
-  ]
-end
-
-;; spawns voters with random utilities for each issue
-to spawn-voters-with-utilities
-  ask n-of number-of-voters patches with [pycor < 35][
-    sprout-voters 1 [
-      ; If the preference value is above 0, the agent prefers that this issue is in place (green)
-      ; Likewise, if it is below 0, the agent prefers that the issue is voted against (red)
-      ; If the voter has a preference of 0, it does not care about the issue
-      set utilities random-normal mean-of-utilities stdev-of-utilities
-      set color white
-      set voice-credits voice-credits-given-per-tick  ;; JACOB: This should maybe be more than what is given on each tick subsequently
-      set shape "cow"
-  ]]
-end
-
-to spawn-referenda
-  ask patches with [pycor = 40 and pxcor = 20][  ;; JACOB: In this case, using number-of-issues in this way works well. In other cases you might want to use the n-of command
-    sprout-referenda 1 [
-      set shape "square"
-      set color white
-      set size 2
-  ]]
-end
 
 to-report payoff ;;should be zero when setup
 
-  ;; JACOB: create a variable called something like last-outcome for "first [outcome] of referenda with [last-referendum = referendum-number" since you are repeating it below
+  let last-outcome [outcome] of the-referendum
   if last-outcome = 0 [report 0]
+
   let payoff-sum 0
   ask voters [
-    set payoff-sum payoff-sum + utilities
+    set payoff-sum payoff-sum + utility * (sign-of last-outcome)
   ]
 
-  if not last-outcome [
-    set payoff-sum payoff-sum * -1
-  ]
-  if payoff-include-votes-cost?
-  [
-    ask voters
-    [
-      set payoff-sum payoff-sum - utility-cost-of-each-voice-credit * sqrt last-voice-credits-spent
+  if payoff-include-votes-cost? [
+    ask voters [
+      set payoff-sum payoff-sum - last-voice-credits-spent + mean [last-voice-credits-spent] of other voters
     ]
   ]
+
   report payoff-sum
 end
 
 
 to-report sum-of-utilities
-  if last-outcome = 0[report 0]
+  if [outcome] of the-referendum = 0 [report 0]
 
   let utility-sum 0
   ask voters [
-    set utility-sum utility-sum + utilities
+    set utility-sum utility-sum + utility
   ]
   report utility-sum
 end
 
-to-report sum-of-votes
-  report last-votes-for - last-votes-against
+to visualize-votes
+  set ycor votes-cast
+  ifelse [outcome] of the-referendum = sign-of utility [
+    set color green
+    set shape "face happy"
+  ] [
+    set color red
+    set shape "face sad"
+  ]
 end
+
+to visualize-outcome
+  ifelse outcome = 1 [
+    set color green
+    set xcor 1
+  ] [
+    set color red
+    set xcor -1
+  ]
+
+end
+
 @#$#@#$#@
 GRAPHICS-WINDOW
-230
-10
-689
-470
+296
+11
+683
+399
 -1
 -1
-11.0
+7.4314
 1
 10
 1
@@ -264,53 +288,36 @@ GRAPHICS-WINDOW
 0
 0
 1
-0
-40
-0
-40
-0
-0
+-25
+25
+-25
+25
+1
+1
 1
 ticks
 30.0
 
-BUTTON
-120
-50
-195
-83
-go
-go
-T
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
-
 SLIDER
-27
-87
-199
-120
+2
+100
+174
+133
 number-of-voters
 number-of-voters
 0
-1000
-1000.0
-1
+10000
+450.0
+10
 1
 NIL
 HORIZONTAL
 
 BUTTON
-25
-49
-112
-82
+0
+62
+87
+95
 go-once
 go
 NIL
@@ -324,9 +331,9 @@ NIL
 1
 
 BUTTON
-25
+0
 11
-88
+63
 44
 setup
 setup\nreset-ticks
@@ -340,26 +347,11 @@ NIL
 NIL
 1
 
-SLIDER
-28
-264
-222
-297
-voice-credits-given-per-tick
-voice-credits-given-per-tick
-0
-50
-17.0
-1
-1
-NIL
-HORIZONTAL
-
 SWITCH
-14
-362
-122
-395
+5
+431
+113
+464
 limit-votes?
 limit-votes?
 1
@@ -382,27 +374,27 @@ true
 false
 "" ""
 PENS
-"positive" 1.0 1 -13840069 true "" "histogram filter [a -> a >= 0] list-of-votes"
-"negative" 1.0 1 -2674135 true "" "histogram filter [a -> a < 0] list-of-votes"
+"positive" 1.0 1 -13840069 true "" "histogram filter [a -> a >= 0] [votes-list] of the-referendum"
+"negative" 1.0 1 -2674135 true "" "histogram filter [a -> a < 0] [votes-list] of the-referendum"
 
 MONITOR
-30
-306
-124
-351
+6
+370
+100
+415
 payoff
 payoff
-17
+2
 1
 11
 
 MONITOR
-129
-306
-216
-351
+105
+370
+192
+415
 sum-of-votes
-sum-of-votes
+[sum-of-votes] of the-referendum
 2
 1
 11
@@ -423,14 +415,14 @@ true
 false
 "" ""
 PENS
-"default" 1.0 1 -13840069 true "" "histogram filter [a -> a >= 0][utilities] of voters"
-"pen-1" 1.0 1 -2674135 true "" "histogram filter [a -> a < 0][utilities] of voters"
+"default" 1.0 1 -13840069 true "" "histogram [utility] of voters with [utility >= 0]"
+"pen-1" 1.0 1 -2674135 true "" "histogram [utility] of voters with [utility < 0]"
 
 MONITOR
-128
-356
-222
-401
+120
+420
+228
+465
 sum-of-utilities
 sum-of-utilities
 1
@@ -438,60 +430,60 @@ sum-of-utilities
 11
 
 SLIDER
-27
-122
-199
-155
-mean-of-utilities
-mean-of-utilities
+2
+182
+151
+215
+majority-mean-utility
+majority-mean-utility
 -10
 10
-0.0
-1
+-0.5
+.5
 1
 NIL
 HORIZONTAL
 
 SLIDER
-27
-157
-199
-190
-stdev-of-utilities
-stdev-of-utilities
+151
+182
+297
+215
+majority-utility-stdev
+majority-utility-stdev
 0
 10
-5.0
+1.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-28
-230
+5
+322
 231
-263
+355
 variance-of-perceived-pivotality
 variance-of-perceived-pivotality
 0
 marginal-pivotality - marginal-pivotality ^ 2 - .001
-0.046875
+0.0
 .001
 1
 NIL
 HORIZONTAL
 
 SLIDER
-27
-194
-213
-227
+4
+286
+190
+319
 marginal-pivotality
 marginal-pivotality
 .05
 1
-0.25
+0.5
 .05
 1
 NIL
@@ -511,63 +503,75 @@ Number of Voters
 10.0
 true
 false
-"" ""
+"" "set-plot-y-range 0 10"
 PENS
-"default" 0.1 1 -16777216 true "" "histogram map [a -> ifelse-value a = 1 [.999][floor (10 * a) / 10]] [perceived-p-value] of voters"
+"pen-1" 0.1 1 -13345367 true "" "histogram [perceived-pivotality] of voters"
 
 SWITCH
-19
-405
-223
-438
+5
+471
+209
+504
 payoff-include-votes-cost?
 payoff-include-votes-cost?
 1
 1
 -1000
 
+CHOOSER
+92
+52
+223
+97
+voting-mechanism
+voting-mechanism
+"1p1v" "QV"
+1
+
 SLIDER
+2
+134
+174
+167
+minority-fraction
+minority-fraction
 0
-442
-228
-475
-utility-cost-of-each-voice-credit
-utility-cost-of-each-voice-credit
-0
-10
-1.0
 .5
+0.06
+.01
 1
 NIL
 HORIZONTAL
 
-SWITCH
-95
-11
-229
-44
-quadratic-voting?
-quadratic-voting?
-0
+SLIDER
+2
+220
+153
+253
+minority-mean-utility
+minority-mean-utility
+-10
+10
+10.0
 1
--1000
+1
+NIL
+HORIZONTAL
 
-BUTTON
-44
-481
-183
-514
-Toggle quad-voting
-set quadratic-voting? not quadratic-voting?
-NIL
+SLIDER
+152
+220
+297
+253
+minority-utility-stdev
+minority-utility-stdev
+0
+10
+1.0
 1
-T
-OBSERVER
-NIL
-W
-NIL
-NIL
 1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -911,7 +915,7 @@ false
 Polygon -7500403 true true 270 75 225 30 30 225 75 270
 Polygon -7500403 true true 30 75 75 30 270 225 225 270
 @#$#@#$#@
-NetLogo 6.1.0
+NetLogo 6.1.1
 @#$#@#$#@
 @#$#@#$#@
 @#$#@#$#@
