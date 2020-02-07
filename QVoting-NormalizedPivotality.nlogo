@@ -1,10 +1,6 @@
-; ToDo
-; - Figure out a way to have the model resut without having to import python each time during behavior space to speed things up. Maybe for each parameter set, run trials within one run.
-
-
 extensions [py]
 breed [voters voter]
-breed [referenda referendum]  ;; JACOB: based on the other code, these should be called [referenda referendum] instead of referenda.
+breed [referenda referendum]
 voters-own [
   utility
   voice-credits
@@ -22,6 +18,10 @@ globals[
   the-referendum
   a-value
   b-value
+  payoff-list
+  payoff-sign-list
+  vote-sum-list
+  mean-median-same-sign-list
 ]
 
 
@@ -29,6 +29,12 @@ globals[
 to setup
   clear-all
   reset-ticks
+
+  set payoff-list (list)
+  set payoff-sign-list (list)
+  set vote-sum-list (list)
+  set mean-median-same-sign-list (list)
+
   spawn-voters-with-utilities
   spawn-referenda
   set the-referendum one-of referenda
@@ -38,33 +44,81 @@ to setup
 end
 
 to reset
-  clear-all
-  reset-ticks
+  clear-turtles
+  clear-drawing
+
   spawn-voters-with-utilities
   spawn-referenda
   set the-referendum one-of referenda
   draw-axes-mean-and-median-utilities
+  clear-all-plots
+  setup-plots
+  update-plots
 end
 
 ;; spawns voters with random utilities for each issue
 to spawn-voters-with-utilities
 
+  (ifelse
+    calibration = "manual" [create-voters-with-manually-chosen-utililties]
+    calibration = "1. prop8-mean>0" or calibration = "2. prop8-mean=0" [create-voters-with-prop8-utility-dist]
+  )
 
+  ask voters [
+    set color grey
+    set shape "face neutral"
+    set-xcor-to-utility
+  ]
+end
+
+
+to create-voters-with-prop8-utility-dist
+  ; This calibration is based off of sections 2.1 and 2.4 in Chandar and Weyl 2019
+  ; utility units here are in units of $10k
+
+  let het-support 0
+  ifelse calibration = "1. prop8-mean>0" [
+    set het-support 0.48 ;support of the heterosexual population for a calibration with mean utility > 0
+  ] [
+    set het-support 0.36 ;support of the heterosexual population for a calibration with mean utility = 0
+  ]
+
+  create-voters number-of-voters [
+    let random-num random-float 1
+    (ifelse
+      random-num < 0.007 [ ; This is the portion of the population that is LGBT and in a relationship
+        set utility 2 + random-float 18
+      ]
+      random-num < 0.04 [ ; This the portion of the population that is LGBT and in a relationship
+        set utility 0.5 + random-float 3.5
+      ]
+      random-num < het-support [ ; This is the % of the non-LGBT population that supported gay marriage
+        set utility random-float 1
+      ]
+      [ ; the remaining % of the population opposed gay marriage
+        set utility random-float -1
+      ]
+    )
+  ]
+end
+
+
+to create-voters-with-manually-chosen-utililties
   create-voters round (number-of-voters * (1 - minority-fraction)) [
     set utility random-normal majority-mean-utility majority-utility-stdev ; If the utility > 0, voter wants the referendum to pass and vice versa. The larger abs utility is, the more the voter cares.
-    set color grey
-    set shape "face neutral"
-    set xcor utility
   ]
-
   create-voters round (number-of-voters * minority-fraction) [
     set utility random-normal minority-mean-utility minority-utility-stdev ; If the utility > 0, voter wants the referendum to pass and vice versa. The larger abs utility is, the more the voter cares.
-    set color grey
-    set shape "face neutral"
-    set xcor utility
   ]
+end
 
 
+to set-xcor-to-utility
+  ifelse abs utility < max-pxcor [ ;; if the turtle can set its utility to the xcor, then do it
+    set xcor utility
+  ] [  ; if utility's magnitude is too large to be represented by the xcor, just hide it.
+    hide-turtle
+  ]
 end
 
 to spawn-referenda
@@ -122,9 +176,13 @@ to go
 
   ask voters [visualize-votes]
   ask the-referendum [visualize-outcome]
+
+  set payoff-list lput payoff payoff-list
+  set payoff-sign-list lput ifelse-value payoff > 0 [1] [0] payoff-sign-list
+  set vote-sum-list lput vote-sum vote-sum-list
+  set mean-median-same-sign-list lput mean-median-same-sign? mean-median-same-sign-list
   tick
 end
-
 
 
 to vote-1p1v [active-referendum] ;; Procedure for voters to vote using 1p1v mechanism
@@ -237,19 +295,29 @@ to-report payoff ;;should be zero when setup
   report payoff-sum
 end
 
+to-report utilities-mean
+  report mean [utility] of voters
+end
 
-to-report sum-of-utilities
-  if [outcome] of the-referendum = 0 [report 0]
+to-report utilities-median
+  report median [utility] of voters
+end
 
-  let utility-sum 0
-  ask voters [
-    set utility-sum utility-sum + utility
-  ]
-  report utility-sum
+to-report vote-sum
+  report [sum-of-votes] of the-referendum
+end
+
+to-report mean-median-same-sign?
+  report ifelse-value (sign-of utilities-mean = sign-of utilities-median) [1] [0]
 end
 
 to visualize-votes
-  set ycor votes-cast
+  ifelse abs votes-cast <= max-pycor [ ; if votes cast can be represnted by ycor (fits on the screen) then display it
+    set ycor votes-cast
+  ] [ ; if votes cast is too large to be displayed as ycor, then hide the turtle
+    hide-turtle
+  ]
+
   ifelse [outcome] of the-referendum = sign-of utility [
     set color green
     set shape "face happy"
@@ -270,15 +338,19 @@ to visualize-outcome
 
 end
 
+to plot-y-axis
+  plotxy 0 plot-y-min
+  plotxy 0 plot-y-max
+end
 @#$#@#$#@
 GRAPHICS-WINDOW
-296
-11
-683
-399
+311
+10
+772
+472
 -1
 -1
-7.4314
+8.9
 1
 10
 1
@@ -305,9 +377,9 @@ SLIDER
 133
 number-of-voters
 number-of-voters
-0
-10000
-450.0
+1
+10001
+10001.0
 10
 1
 NIL
@@ -316,9 +388,9 @@ HORIZONTAL
 BUTTON
 0
 62
-87
+55
 95
-go-once
+vote
 go
 NIL
 1
@@ -328,7 +400,7 @@ NIL
 Q
 NIL
 NIL
-1
+0
 
 BUTTON
 0
@@ -348,10 +420,10 @@ NIL
 1
 
 SWITCH
-5
-431
-113
-464
+212
+471
+320
+504
 limit-votes?
 limit-votes?
 1
@@ -359,10 +431,10 @@ limit-votes?
 -1000
 
 PLOT
-698
-23
-953
-215
+772
+22
+1027
+214
 Number of Voters by Votes cast
 Number of Votes
 Number of Voters
@@ -376,6 +448,7 @@ false
 PENS
 "positive" 1.0 1 -13840069 true "" "histogram filter [a -> a >= 0] [votes-list] of the-referendum"
 "negative" 1.0 1 -2674135 true "" "histogram filter [a -> a < 0] [votes-list] of the-referendum"
+"pen-2" 1.0 0 -16777216 true "" "plot-y-axis"
 
 MONITOR
 6
@@ -393,17 +466,17 @@ MONITOR
 370
 192
 415
-sum-of-votes
-[sum-of-votes] of the-referendum
+vote-sum
+vote-sum
 2
 1
 11
 
 PLOT
-698
-219
-950
-412
+772
+218
+1024
+411
 Distrubution of Utilities
 Utility gain if passed
 Number of Voters
@@ -413,42 +486,43 @@ Number of Voters
 10.0
 true
 false
-"" ""
+"" "set-plot-x-range (round (min [utility] of voters) - 1) (round (max [utility] of voters + 1))\n"
 PENS
 "default" 1.0 1 -13840069 true "" "histogram [utility] of voters with [utility >= 0]"
 "pen-1" 1.0 1 -2674135 true "" "histogram [utility] of voters with [utility < 0]"
+"pen-2" 1.0 0 -16777216 true "" "plot-y-axis"
 
 MONITOR
-120
-420
-228
-465
-sum-of-utilities
-sum-of-utilities
-1
+118
+419
+222
+464
+mean utilities
+utilities-mean
+3
 1
 11
 
 SLIDER
-2
-182
-151
-215
+0
+228
+160
+261
 majority-mean-utility
 majority-mean-utility
 -10
 10
--0.5
+0.0
 .5
 1
 NIL
 HORIZONTAL
 
 SLIDER
-151
-182
-297
-215
+160
+227
+306
+260
 majority-utility-stdev
 majority-utility-stdev
 0
@@ -461,14 +535,14 @@ HORIZONTAL
 
 SLIDER
 5
-322
+336
 231
-355
+369
 variance-of-perceived-pivotality
 variance-of-perceived-pivotality
 0
-marginal-pivotality - marginal-pivotality ^ 2 - .001
-0.0
+0.083
+0.083
 .001
 1
 NIL
@@ -476,9 +550,9 @@ HORIZONTAL
 
 SLIDER
 4
-286
+300
 190
-319
+333
 marginal-pivotality
 marginal-pivotality
 .05
@@ -490,10 +564,10 @@ NIL
 HORIZONTAL
 
 PLOT
-961
-22
-1208
-215
+1035
+21
+1282
+214
 Distribution of perceived Marginal Pivotality
 Perceived Marginal Pivotality
 Number of Voters
@@ -519,14 +593,14 @@ payoff-include-votes-cost?
 -1000
 
 CHOOSER
-92
+164
 52
-223
+295
 97
 voting-mechanism
 voting-mechanism
 "1p1v" "QV"
-1
+0
 
 SLIDER
 2
@@ -537,17 +611,17 @@ minority-fraction
 minority-fraction
 0
 .5
-0.06
+0.0
 .01
 1
 NIL
 HORIZONTAL
 
 SLIDER
-2
-220
-153
-253
+0
+262
+159
+295
 minority-mean-utility
 minority-mean-utility
 -10
@@ -559,10 +633,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-152
-220
-297
-253
+161
+262
+306
+295
 minority-utility-stdev
 minority-utility-stdev
 0
@@ -572,6 +646,71 @@ minority-utility-stdev
 1
 NIL
 HORIZONTAL
+
+BUTTON
+82
+12
+145
+45
+NIL
+reset\n
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+0
+
+BUTTON
+61
+62
+160
+95
+reset & vote
+reset \ngo
+T
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+0
+
+MONITOR
+4
+419
+114
+464
+median utilities 
+utilities-median
+2
+1
+11
+
+CHOOSER
+5
+180
+167
+225
+calibration
+calibration
+"manual" "1. prop8-mean>0" "2. prop8-mean=0"
+1
+
+TEXTBOX
+177
+181
+319
+223
+manual calibration uses the utility sliders below. The others are preset.
+11
+0.0
+1
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -996,52 +1135,161 @@ setup</setup>
       <value value="0.85"/>
     </enumeratedValueSet>
   </experiment>
-  <experiment name="1p1v-vs-QV" repetitions="1000" runMetricsEveryStep="false">
-    <setup>if marginal-pivotality = .25 or marginal-pivotality = .75
-[set variance-of-perceived-pivotality precision (variance-of-perceived-pivotality / 2) 4]
-
-if marginal-pivotality = .15 or marginal-pivotality = .85
-[set variance-of-perceived-pivotality precision (variance-of-perceived-pivotality / 5) 4]
-setup</setup>
-    <go>go</go>
-    <timeLimit steps="1"/>
-    <metric>variance-of-perceived-pivotality</metric>
-    <metric>list-of-votes</metric>
-    <metric>sum-of-votes</metric>
-    <metric>sum-of-utilities</metric>
-    <metric>payoff</metric>
+  <experiment name="1p1v-vs-QV (agg)" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>reset
+go</go>
+    <timeLimit steps="1000"/>
+    <metric>mean payoff-sign-list</metric>
+    <metric>mean payoff-list</metric>
+    <metric>standard-deviation payoff-list</metric>
+    <metric>mean vote-sum-list</metric>
+    <metric>standard-deviation vote-sum-list</metric>
+    <metric>mean mean-median-same-sign-list</metric>
     <enumeratedValueSet variable="number-of-voters">
-      <value value="1000"/>
+      <value value="11"/>
+      <value value="21"/>
+      <value value="31"/>
+      <value value="41"/>
+      <value value="51"/>
+      <value value="61"/>
+      <value value="71"/>
+      <value value="81"/>
+      <value value="101"/>
+      <value value="201"/>
+      <value value="301"/>
+      <value value="401"/>
+      <value value="501"/>
+      <value value="601"/>
+      <value value="701"/>
+      <value value="801"/>
+      <value value="901"/>
+      <value value="1001"/>
+      <value value="5001"/>
+      <value value="10001"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="voice-credits-given-per-tick">
+    <enumeratedValueSet variable="minority-fraction">
       <value value="0"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="mean-of-utilities">
+    <enumeratedValueSet variable="majority-mean-utility">
       <value value="0"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="stdev-of-utilities">
-      <value value="5"/>
+    <enumeratedValueSet variable="majority-utility-stdev">
+      <value value="1"/>
+      <value value="3"/>
+      <value value="6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="minority-mean-utility">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="minority-utility-stdev">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="marginal-pivotality">
+      <value value="0.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="variance-of-perceived-pivotality">
+      <value value="0"/>
+      <value value="3.0E-4"/>
+      <value value="0.001"/>
+      <value value="0.01"/>
+      <value value="0.02"/>
+      <value value="0.03"/>
+      <value value="0.04"/>
+      <value value="0.05"/>
+      <value value="0.06"/>
+      <value value="0.07"/>
+      <value value="0.08"/>
+      <value value="0.083"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="limit-votes?">
       <value value="false"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="utility-cost-of-each-voice-credit">
+    <enumeratedValueSet variable="payoff-include-votes-cost?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="voting-mechanism">
+      <value value="&quot;1p1v&quot;"/>
+      <value value="&quot;QV&quot;"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="1p1v-vs-QV-prop8" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>reset
+go</go>
+    <timeLimit steps="1000"/>
+    <metric>mean payoff-sign-list</metric>
+    <metric>mean payoff-list</metric>
+    <metric>standard-deviation payoff-list</metric>
+    <metric>mean vote-sum-list</metric>
+    <metric>standard-deviation vote-sum-list</metric>
+    <metric>mean mean-median-same-sign-list</metric>
+    <enumeratedValueSet variable="number-of-voters">
+      <value value="11"/>
+      <value value="21"/>
+      <value value="31"/>
+      <value value="41"/>
+      <value value="51"/>
+      <value value="61"/>
+      <value value="71"/>
+      <value value="81"/>
+      <value value="101"/>
+      <value value="201"/>
+      <value value="301"/>
+      <value value="401"/>
+      <value value="501"/>
+      <value value="601"/>
+      <value value="701"/>
+      <value value="801"/>
+      <value value="901"/>
+      <value value="1001"/>
+      <value value="5001"/>
+      <value value="10001"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="minority-fraction">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="majority-mean-utility">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="majority-utility-stdev">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="minority-mean-utility">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="minority-utility-stdev">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="calibration">
+      <value value="&quot;1. prop8-mean&gt;0&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="marginal-pivotality">
       <value value="0.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="variance-of-perceived-pivotality">
+      <value value="0"/>
+      <value value="3.0E-4"/>
+      <value value="0.001"/>
+      <value value="0.01"/>
+      <value value="0.02"/>
+      <value value="0.03"/>
+      <value value="0.04"/>
+      <value value="0.05"/>
+      <value value="0.06"/>
+      <value value="0.07"/>
+      <value value="0.08"/>
+      <value value="0.083"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="limit-votes?">
+      <value value="false"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="payoff-include-votes-cost?">
       <value value="false"/>
     </enumeratedValueSet>
-    <steppedValueSet variable="variance-of-perceived-pivotality" first="0.005" step="0.01" last="0.085"/>
-    <enumeratedValueSet variable="marginal-pivotality">
-      <value value="0.15"/>
-      <value value="0.25"/>
-      <value value="0.5"/>
-      <value value="0.75"/>
-      <value value="0.85"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="quadratic-voting?">
-      <value value="false"/>
-      <value value="true"/>
+    <enumeratedValueSet variable="voting-mechanism">
+      <value value="&quot;1p1v&quot;"/>
+      <value value="&quot;QV&quot;"/>
     </enumeratedValueSet>
   </experiment>
 </experiments>
