@@ -1,0 +1,20 @@
+
+to-report sign-of [n] ;; reports the sign of the number (0 if it is zero)
+  report (
+    ifelse-value
+    n = 0 [0]
+    n > 0 [1]
+    n < 0 [-1]
+  )
+end
+
+to plot-y-axis
+  plotxy 0 plot-y-min
+  plotxy 0 plot-y-max
+end
+
+
+to plot-x-axis
+  plotxy plot-x-min 0
+  plotxy plot-x-max 0 
+end

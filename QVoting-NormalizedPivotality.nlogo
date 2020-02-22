@@ -1,4 +1,5 @@
 extensions [py]
+__includes ["utils.nls"]
 breed [voters voter]
 breed [referenda referendum]
 voters-own [
@@ -232,14 +233,6 @@ to vote-QV [active-referendum]
 end
 
 
-to-report sign-of [n] ;; reports the sign of the number (0 if it is zero)
-  report (
-    ifelse-value
-    n = 0 [0]
-    n > 0 [1]
-    n < 0 [-1]
-  )
-end
 
 to assign-p-values-to-voters
   ifelse marginal-pivotality = 1 or variance-of-perceived-pivotality = 0[
@@ -337,11 +330,6 @@ to visualize-outcome
   ]
 
 end
-
-to plot-y-axis
-  plotxy 0 plot-y-min
-  plotxy 0 plot-y-max
-end
 @#$#@#$#@
 GRAPHICS-WINDOW
 311
@@ -379,7 +367,7 @@ number-of-voters
 number-of-voters
 1
 10001
-10001.0
+1471.0
 10
 1
 NIL
@@ -486,7 +474,7 @@ Number of Voters
 10.0
 true
 false
-"" "set-plot-x-range (round (min [utility] of voters) - 1) (round (max [utility] of voters + 1))\n"
+"" "if ticks != 0 [set-plot-x-range (round (min [utility] of voters) - 1) (round (max [utility] of voters + 1))]\n"
 PENS
 "default" 1.0 1 -13840069 true "" "histogram [utility] of voters with [utility >= 0]"
 "pen-1" 1.0 1 -2674135 true "" "histogram [utility] of voters with [utility < 0]"
@@ -512,7 +500,7 @@ majority-mean-utility
 majority-mean-utility
 -10
 10
-0.0
+-0.5
 .5
 1
 NIL
@@ -527,8 +515,8 @@ majority-utility-stdev
 majority-utility-stdev
 0
 10
-1.0
-1
+1.5
+0.5
 1
 NIL
 HORIZONTAL
@@ -600,7 +588,7 @@ CHOOSER
 voting-mechanism
 voting-mechanism
 "1p1v" "QV"
-0
+1
 
 SLIDER
 2
@@ -611,7 +599,7 @@ minority-fraction
 minority-fraction
 0
 .5
-0.0
+0.06
 .01
 1
 NIL
@@ -642,7 +630,7 @@ minority-utility-stdev
 0
 10
 1.0
-1
+0.5
 1
 NIL
 HORIZONTAL

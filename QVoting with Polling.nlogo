@@ -1,11 +1,20 @@
+; TODO
+; - change spawn-voters-majority-vs-minority to be clearer and more intuitive
+; - if needed, change lists of utilities to arrays for performance reasons
+; -  think about changing psi-prime to round to zero earlier. Real people would not have such precision
+
+__includes ["utils.nls"]
+
 breed[voters voter]
 breed[influencers influencer]
-voters-own[
+
+voters-own [
   utilities
   votes
   strategic?
   counted-in-last-poll?
 ]
+
 globals[
   social-policy-vector
   social-policy-turtle
@@ -14,6 +23,11 @@ globals[
   poll-turtle
   voice-credits
 ]
+
+
+;*********************************************************************
+;************************* Setup Code **************************
+;*********************************************************************
 
 to setup
   clear-all
@@ -25,11 +39,12 @@ to setup
 
   ; Initialize the social policy vector
   set social-policy-vector n-values number-of-issues [0]
+
   ask voters [
     set counted-in-last-poll? false
   ]
-  ; Initialize poll turtle
 
+  ; Initialize poll turtle
   ask patch 0 0 [
     sprout 1 [
       set color yellow
@@ -37,32 +52,38 @@ to setup
       set size 3
       set hidden? true
       set poll-turtle self
+      set label "Poll"
     ]
     sprout 1 [
       set color green
       set shape "star"
       set size 3
       set social-policy-turtle self
+      set label "Vote Outcome"
     ]
   ]
   set voice-credits 1
   set poll nobody
-  refresh
+  refresh-viz
 end
 
 to spawn-voters
-  if utility-distribution = "Indifferent Majority vs. Passionate Minority"[
-    spawn-voters-majority-vs-minority
-    stop
-  ]
-  create-voters number-of-voters [
-    set color violet
-    set strategic? random-float 1 < proportion-of-strategic-voters
-    ifelse strategic? [
-      set color 115 + 20 * vote-portion-strategic
-    ][set color violet]
-    set-utilities
-  ]
+  (ifelse
+    utility-distribution = "Indifferent Majority vs. Passionate Minority" [spawn-voters-majority-vs-minority]
+    utility-distribution = "Prop8 mean>0" [create-voters-with-prop8-utility-dist]
+    [  ; default option
+    create-voters number-of-voters [
+      set color violet
+      set strategic? random-float 1 < proportion-of-strategic-voters
+
+      ifelse strategic? [
+        set color 115 + 20 * vote-portion-strategic
+      ] [
+        set color violet
+      ]
+      set-utilities
+    ]
+  ])
 end
 
 to spawn-voters-majority-vs-minority
@@ -81,6 +102,33 @@ to spawn-voters-majority-vs-minority
         set utility-sum-0 utility-sum-0 + item 0 utilities
       ]
     ]
+end
+
+to create-voters-with-prop8-utility-dist
+  ; This calibration is based off of sections 2.1 and 2.4 in Chandar and Weyl 2019
+  ; utility units here are in units of $10k
+
+  create-voters number-of-voters [
+    set utilities n-values (number-of-issues - 1) [random-normal 0 .1] ; set utilities on all other issues
+    set strategic? random-float 1 < proportion-of-strategic-voters
+    ifelse strategic? [set color 115 + 20 * vote-portion-strategic][set color violet]
+
+    let random-num random-float 1
+    (ifelse
+      random-num < 0.007 [ ; This is the portion of the population that is LGBT and in a relationship
+        set utilities fput (.1 + random-float .9) utilities  ; .02 and .18 both * 5 to make these utilities comparable to utilities on other issues)
+      ]
+      random-num < 0.04 [ ; This the portion of the population that is LGBT and in a relationship
+        set utilities fput (0.025 + random-float .175) utilities
+      ]
+      random-num < .48 [ ; This is the % of the non-LGBT population that supported gay marriage
+        set utilities fput (random-float .1) utilities
+      ]
+      [ ; the remaining % of the population opposed gay marriage
+        set utilities fput (random-float -.1) utilities
+      ]
+    )
+  ]
 end
 
 to set-utilities
@@ -108,90 +156,62 @@ to set-utilities
   )
 end
 
-; Moves voters and poll to their locations based of their utilities and poll results, respectively
-to refresh
-  clear-drawing
-  if x-axis >= length social-policy-vector [set x-axis 0]
-  if y-axis >= length social-policy-vector [set y-axis 0]
-  ask voters [
-    set xcor item x-axis utilities * max-pxcor
-    set ycor item y-axis utilities * max-pycor
-  ]
-  ask poll-turtle[
-    ifelse poll != nobody
-    [set hidden? false
-      move-to poll-patch]
-    [set hidden? true]
-  ]
-  ask social-policy-turtle[
-    let next-xcor item x-axis social-policy-vector
-    let next-ycor item y-axis social-policy-vector
-    set xcor ifelse-value abs next-xcor > max-pxcor [(max-pxcor - 1) * next-xcor / abs next-xcor] [next-xcor]
-    set ycor ifelse-value abs next-ycor > max-pycor [(max-pycor - 1) * next-ycor / abs next-ycor] [next-ycor]
-  ]
 
-  ; If it is not the first tick, show the winners on the grid
-  if ticks != 0 [show-winners]
+
+
+;************************************************************************
+;************************* Voting & Polling Code ************************
+;************************************************************************
+
+to vote
+  ifelse QV? [
+    vote-QV
+  ] [
+    vote-1p1v
+  ]
 end
-
 ; Called by the Vote Button, executes the voting procedure for QV
 to vote-QV
+  reset-social-policty-vector
+  ask voters [
+    calculate-preferred-votes-QV
+    set social-policy-vector (add-lists social-policy-vector votes)  ; add each persons votes to the social-policy vector
+  ]
   tick
-  ask voters [calculate-preferred-votes-QV]
-
-  ; sets social policy vector to be equal to the sum of all voting vectors
-  set social-policy-vector n-values length social-policy-vector [0]
-  foreach [votes] of voters [a -> (set social-policy-vector
-    (map [[b c] -> b + c] a social-policy-vector))]
-
-  refresh
+  refresh-viz
 end
 
 ; Called by the Vote Button, executes the voting procedure for 1p1v
 to vote-1p1v
+  reset-social-policty-vector
+  ask voters [
+    set votes map [u -> sign-of u] utilities
+    set social-policy-vector (add-lists social-policy-vector votes)
+  ]
   tick
-
-  set social-policy-vector n-values length social-policy-vector [0]
-  foreach [utilities] of voters [a -> (set social-policy-vector
-    (map [[b c] -> (b / abs b) + c] a social-policy-vector))]
-  refresh
+  refresh-viz
 end
 
 
 to calculate-preferred-votes-QV
   ; If the agent is strategic, the agent will take the information from the last poll, and make a decision based off it.
   ; The utility based vote is used in the calculation, so first that must be calculated.
-  ifelse strategic? and poll != nobody and votes != 0
-  [
+  ifelse strategic? and poll != nobody and votes != 0 [
     vote-strategic
-  ]
-  [
+  ] [
     vote-truthful
   ]
-
 end
 
-; For the two issues that are shown on the grid, color the quadrant green if the outcome corresponding with it has the same sign.
-to show-winners
-  ask patches with [pxcor != 0  and  pycor != 0]  [set pcolor black]
-
-  let x-sign (item x-axis social-policy-vector) / abs (item x-axis social-policy-vector)
-  let y-sign (item y-axis social-policy-vector) / abs (item y-axis social-policy-vector)
-  ask patches with [pxcor != 0  and pycor != 0 and pxcor * x-sign >= 1 and pycor * y-sign >= 1]
-  [set pcolor green - 3]
+to reset-social-policty-vector
+  set social-policy-vector n-values length social-policy-vector [0]
 end
 
-; reports the patch that poll turtle should be on, based of the last poll
-to-report poll-patch
-  report patch
-  ifelse-value (abs item x-axis poll) < max-pxcor [item x-axis poll] [(max-pxcor - 1) / item x-axis poll * abs item x-axis poll]
-  ifelse-value (abs item y-axis poll) < max-pxcor [item y-axis poll] [(max-pycor - 1) / item y-axis poll * abs item y-axis poll]
-end
 
 ; Sets votes to be a multiple of utilities
 to vote-truthful
-  let j sqrt (voice-credits / sum map [u -> u ^ 2] utilities)
-  set votes map[u -> u * j] utilities
+  let vc-per-u sqrt (voice-credits / sum map [u -> u ^ 2] utilities)  ; calculate voice credits per unit of utility given this voter's utilities
+  set votes map[u -> u * vc-per-u] utilities
 end
 
 to vote-strategic
@@ -199,7 +219,7 @@ to vote-strategic
 
   ; If the agent was not counted in the last poll, add its votes to the poll
   if not counted-in-last-poll? [
-    set estimated-outcome (map [[a b] -> a + b] estimated-outcome votes)
+    set estimated-outcome  (add-lists estimated-outcome votes)
   ]
 
   ; Calculate number of votes by using the polling data to guess the marginal pivotality
@@ -211,19 +231,17 @@ to vote-strategic
   ; A current bug in this algorithm is that if all inputs in estimated-outcome are far from 0, psi-prime will output 0 as a result of floating point precision, and cause a divide by zero error.
   ; When this occurs, the voter should vote based on his utilities, knowing that either way, his vote will most likely not matter.
   ; Since votes do not carry over between elections in this scenario, the voter has no reason to not vote.
-  ifelse sum-of-votes^2 != 0
-  [
+  ifelse sum-of-votes^2 != 0 [
     ; Normalize Strategic Votes to 1
-    let strategic-votes map [x -> x / sqrt sum-of-votes^2 * voice-credits] votes
+    let strategic-votes map [x -> (x / sqrt sum-of-votes^2) * voice-credits] votes
     ; Alias vote-portion-strategic to a, to shorten lines
     let a vote-portion-strategic
     vote-truthful
     ; The votes vector cast is a combination of strategic votes and truthful votes.
     ; a denotes the portion of the vote that shall be strategic.
     set votes (map [[v-t v-s] -> a * v-s + (1 - a) * v-t] votes strategic-votes)
-    set votes map [x -> x / sqrt sum map [v -> v ^ 2] votes] votes
-  ]
-  [
+    set votes map [x -> x / sqrt sum map [v -> v ^ 2] votes] votes  ; renormalize votes
+  ] [
     vote-truthful
   ]
 end
@@ -232,28 +250,34 @@ end
 ; The constants are as follows:
 ; delta is approximately the value in which psi(x) = sgn(x)
 ; b is a constant to adjust the graph so psi(delta) ~ sgn(x) at small values
-to-report psi-prime[x]
-  let delta 10
+to-report psi-prime [x]
+  let delta .1
   let b 4
-  report ifelse-value abs x > 50 * delta [0] [(2 * b * e ^ ( - b * x / delta)) / (delta * (1 + e ^ (- b * x / delta)) ^ 2)]
+  report ifelse-value (abs x) > (50 * delta) [
+    0
+  ] [
+    (2 * b * e ^ ( - b * x / delta)) / (delta * (1 + e ^ (- b * x / delta)) ^ 2)
+  ]
 end
 
-; Takes a random sample of agent's truthful vote, and saves the result in the poll vector
+; Takes a random sample of agent's vote, and saves the result in the poll vector. They vote in the poll as they would in the
+; real election. i.e. if they are strategic and there is already an existing poll, they take that information into account.
+; Otherwise, they vote Truthfully.
 to take-poll
+  ask voters [set counted-in-last-poll? false]
+
   let polled-agentset n-of (poll-response-rate * count voters) voters
   ask polled-agentset[
     calculate-preferred-votes-QV
     set counted-in-last-poll? true
   ]
 
-  ask voters[
-    if (not member? self polled-agentset) [
-      set counted-in-last-poll? false
-    ]
-  ]
   set poll n-values length social-policy-vector [0]
-  foreach [votes] of polled-agentset [a -> set poll (map [[b c] -> b + c] a poll)]
-  refresh
+  ask polled-agentset [
+    set poll (add-lists poll votes)
+  ]
+  ;foreach [votes] of polled-agentset [a -> set poll (map [[b c] -> b + c] a poll)]
+  refresh-viz
 end
 
 ; Reporter for monitor
@@ -263,21 +287,93 @@ to-report poll-results
   [report "NO POLL ACTIVE"]
 end
 
-; Utility gain reporter for monitor
-to-report total-utility-gain
-  let index 0
 
-  let sum-utilities n-values length social-policy-vector [0]
-  foreach [utilities] of voters [list-u -> set sum-utilities (map [[s u] -> s + u] sum-utilities list-u)]
-  let total-utility (map [[spv u] -> (ifelse-value
-    spv = 0 [0]
-    spv > 0 [u]
-    spv < 0 [-1 * u]
-  )] social-policy-vector sum-utilities)
+;*********************************************************************
+;************************* Visualization code **************************
+;*********************************************************************
 
-  report total-utility
+; For the two issues that are shown on the grid, color the quadrant green if the outcome corresponding with it has the same sign.
+to show-winners
+  ask patches with [pxcor != 0  and  pycor != 0]  [set pcolor black]
+  let x-sign sign-of (item x-axis social-policy-vector)
+  let y-sign sign-of (item y-axis social-policy-vector)
+  ask patches with [pxcor != 0  and pycor != 0 and pxcor * x-sign >= 1 and pycor * y-sign >= 1]
+  [set pcolor green - 3]
 end
 
+; reports the patch that poll turtle should be on, based of the last poll
+to-report poll-patch
+  report patch
+  ifelse-value (abs item x-axis poll) < max-pxcor [item x-axis poll] [(max-pxcor - 1) / item x-axis poll * abs item x-axis poll]
+  ifelse-value (abs item y-axis poll) < max-pxcor [item y-axis poll] [(max-pycor - 1) / item y-axis poll * abs item y-axis poll]
+end
+
+; Moves voters and poll to their locations based of their utilities and poll results, respectively
+to refresh-viz
+  clear-drawing
+  if x-axis >= length social-policy-vector [set x-axis 0]
+  if y-axis >= length social-policy-vector [set y-axis 0]
+  ask voters [
+    set xcor item x-axis utilities * max-pxcor
+    set ycor item y-axis utilities * max-pycor
+  ]
+  ask poll-turtle[
+    ifelse poll = nobody [
+      set hidden? true
+    ] [
+      set hidden? false
+      move-to poll-patch
+    ]
+  ]
+
+  ask social-policy-turtle[
+    let next-xcor item x-axis social-policy-vector
+    let next-ycor item y-axis social-policy-vector
+    set xcor ifelse-value abs next-xcor > max-pxcor [(max-pxcor - 1) * sign-of next-xcor] [next-xcor]
+    set ycor ifelse-value abs next-ycor > max-pycor [(max-pycor - 1) * sign-of next-ycor] [next-ycor]
+  ]
+
+  ; If it is not the first tick, show the winners on the grid
+  if ticks != 0 [show-winners]
+end
+
+
+;*********************************************************************
+;************************* Reporters **************************
+;*********************************************************************
+
+; Utility gain reporter for monitor
+to-report total-payoff-per-issue
+  let index 0
+
+  let utilities-sum n-values length social-policy-vector [0]
+  ask voters [
+    set utilities-sum add-lists utilities-sum utilities
+  ]
+
+  let payoff (map [[spv u] -> (sign-of spv) * u] social-policy-vector utilities-sum)
+
+  report payoff
+end
+
+
+to-report mean-utilities
+  report map [i -> mean [item i utilities] of voters] range number-of-issues
+end
+
+to-report median-utilities
+  report map [i -> median [item i utilities] of voters] range number-of-issues
+end
+
+to-report mean-median-same-sign-list
+  report (map [[mn md] -> ifelse-value sign-of mn = sign-of md [1] [0]]
+    mean-utilities median-utilities)
+end
+
+
+to-report add-lists [lst1 lst2]
+  report (map [[l1 l2] -> l1 + l2] lst1 lst2)
+end
 
 
 ; Function for deleting voters
@@ -288,7 +384,7 @@ to delete-voters
 end
 
 to-report maximal-utility?
-  report not member? false map [x -> x > 0] total-utility-gain
+  report not member? false map [x -> x > 0] total-payoff-per-issue
 end
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -312,13 +408,13 @@ to-report has-converged?
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
-242
-12
-770
-541
+292
+10
+813
+532
 -1
 -1
-8.0
+7.9
 1
 10
 1
@@ -332,37 +428,37 @@ GRAPHICS-WINDOW
 32
 -32
 32
-0
-0
+1
+1
 1
 ticks
 30.0
 
 SLIDER
 0
-15
+10
 219
-48
+43
 number-of-voters
 number-of-voters
-0
-10000
-1500.0
-1
+11
+10001
+9361.0
+10
 1
 NIL
 HORIZONTAL
 
 SLIDER
 0
-48
+43
 219
-81
+76
 proportion-of-strategic-voters
 proportion-of-strategic-voters
 0
 1
-0.42
+1.0
 .01
 1
 NIL
@@ -370,14 +466,14 @@ HORIZONTAL
 
 SLIDER
 0
-114
+77
 219
-147
+110
 number-of-issues
 number-of-issues
-2
+1
 10
-2.0
+10.0
 1
 1
 NIL
@@ -385,9 +481,9 @@ HORIZONTAL
 
 BUTTON
 0
-228
+191
 102
-280
+243
 Setup
 setup\n
 NIL
@@ -406,7 +502,7 @@ BUTTON
 218
 315
 Vote!
-ifelse QV? [vote-QV][vote-1p1v]
+vote
 NIL
 1
 T
@@ -419,11 +515,11 @@ NIL
 
 BUTTON
 104
-228
+191
 219
-280
+243
 Refresh
-refresh\n
+refresh-viz\n
 NIL
 1
 T
@@ -435,10 +531,10 @@ NIL
 0
 
 SLIDER
-772
-11
-944
-44
+832
+12
+1004
+45
 x-axis
 x-axis
 0
@@ -450,10 +546,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-772
-48
-944
-81
+833
+50
+1005
+83
 y-axis
 y-axis
 0
@@ -465,10 +561,10 @@ NIL
 HORIZONTAL
 
 BUTTON
-772
-185
-945
-219
+833
+187
+1006
+221
 Conduct a poll!
 take-poll
 NIL
@@ -482,10 +578,10 @@ NIL
 0
 
 SLIDER
-772
-220
-944
-253
+833
+222
+1005
+255
 poll-response-rate
 poll-response-rate
 0
@@ -543,20 +639,20 @@ NIL
 
 MONITOR
 0
-436
-238
-481
+494
+296
+539
 Social Policy Vector
-map [x -> precision x 2]social-policy-vector
+map [x -> precision x 2] social-policy-vector
 2
 1
 11
 
 MONITOR
-772
-137
-945
-182
+833
+139
+1006
+184
 Poll Results
 poll-results
 17
@@ -565,9 +661,9 @@ poll-results
 
 MONITOR
 0
-388
+446
 98
-433
+491
 Maximal Utility?
 maximal-utility?
 17
@@ -575,10 +671,10 @@ maximal-utility?
 11
 
 BUTTON
-772
-255
-945
-289
+833
+257
+1006
+291
 Clear Poll
 set poll nobody\nask voters[\n    set counted-in-last-poll? false\n  ]
 NIL
@@ -592,10 +688,10 @@ NIL
 0
 
 BUTTON
-801
-93
-908
-127
+862
+95
+969
+129
 Delete Voters
 delete-voters
 NIL
@@ -610,19 +706,19 @@ NIL
 
 CHOOSER
 0
-148
+111
 243
-193
+156
 utility-distribution
 utility-distribution
-"Normal mean = 0" "Normal mean != 0" "Bimodal one direction" "Bimodal all directions" "Indifferent Majority vs. Passionate Minority"
-3
+"Normal mean = 0" "Normal mean != 0" "Bimodal one direction" "Bimodal all directions" "Indifferent Majority vs. Passionate Minority" "Prop8 mean>0"
+5
 
 TEXTBOX
-784
-294
-934
-364
+845
+296
+995
+366
 The yellow star represents the polling vector.\nThe green \nstar represents the votes vector\n
 11
 115.0
@@ -630,14 +726,14 @@ The yellow star represents the polling vector.\nThe green \nstar represents the 
 
 SLIDER
 0
-194
+157
 218
-227
+190
 minority-power
 minority-power
 0
 100
-100.0
+0.0
 10
 1
 NIL
@@ -645,31 +741,165 @@ HORIZONTAL
 
 MONITOR
 0
-482
-241
-527
-Utility Gain
-map [x -> precision x 2] total-utility-gain
+540
+307
+585
+Total Payoff Per Issue
+map [x -> precision x 2] total-payoff-per-issue
 2
 1
 11
 
 SLIDER
 0
-81
+245
 219
-114
+278
 vote-portion-strategic
 vote-portion-strategic
 0
 1
-0.9
+0.0
 .01
 1
 NIL
 HORIZONTAL
 
+PLOT
+820
+371
+1020
+521
+Votes cast vs utility
+utility of issue
+votes cast on issue
+-1.0
+1.0
+-1.0
+1.0
+true
+false
+"" "clear-plot"
+PENS
+"default" 1.0 2 -13345367 true "" "ask voters [plotxy item issue-num utilities item issue-num votes]"
+"pen-1" 1.0 0 -7500403 true "" "plot-y-axis"
+"pen-2" 1.0 0 -7500403 true "" "plot-x-axis"
+
+SLIDER
+823
+525
+983
+558
+issue-num
+issue-num
+0
+number-of-issues - 1
+0.0
+1
+1
+NIL
+HORIZONTAL
+
+BUTTON
+989
+524
+1101
+557
+NIL
+update-plots
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+PLOT
+1025
+371
+1225
+521
+Utilities vs Votes for one turtles
+NIL
+NIL
+-1.0
+1.0
+-1.0
+1.0
+true
+false
+"" "clear-plot"
+PENS
+"default" 1.0 2 -16777216 true "" "if ticks > 0 [\nlet Us [utilities] of voter voter-num\nlet Vs [votes] of voter voter-num\n(foreach Us Vs [[u v] -> plotxy u v])\n]"
+"pen-1" 1.0 0 -7500403 true "" "plot-x-axis"
+"pen-2" 1.0 0 -7500403 true "" "plot-y-axis"
+"pen-3" 1.0 2 -2674135 true "" "if ticks > 0 [\nlet Us [utilities] of voter 1\nlet Vs [votes] of voter 1\n(foreach Us Vs [[u v] -> plotxy u v])\n]"
+
+INPUTBOX
+1104
+523
+1253
+583
+voter-num
+386.0
+1
+0
+Number
+
+BUTTON
+24
+398
+133
+431
+setup & vote
+setup\nvote
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+PLOT
+1023
+217
+1223
+367
+histogram of votes on issue-num
+NIL
+NIL
+-1.0
+1.0
+0.0
+10.0
+false
+false
+"set-plot-y-range 0 round number-of-voters / 5" ""
+PENS
+"default" 0.1 1 -16777216 true "" "histogram [item issue-num votes] of voters"
+"pen-1" 1.0 0 -7500403 true "" "plot-y-axis"
+
 @#$#@#$#@
+## experiments
+This repeated 100 times took less than 2 minutes
+["number-of-voters" 11 51 101 501 1001 5001 10001]
+["vote-portion-strategic" 0]
+["proportion-of-strategic-voters" 1]
+["minority-power" 0]
+["y-axis" 1]
+["x-axis" 0]
+["QV?" false true]
+["number-of-issues" 2 4 8]
+["issue-num" 0]
+["poll-response-rate" 1]
+["utility-distribution" "Normal mean = 0"]
+
 ## WHAT IS IT?
 
 (a general understanding of what the model is trying to show or explain)
@@ -1011,7 +1241,7 @@ false
 Polygon -7500403 true true 270 75 225 30 30 225 75 270
 Polygon -7500403 true true 30 75 75 30 270 225 225 270
 @#$#@#$#@
-NetLogo 6.1.0
+NetLogo 6.1.1
 @#$#@#$#@
 @#$#@#$#@
 @#$#@#$#@
@@ -1136,6 +1366,111 @@ set social-policy-vector poll</go>
       <value value="&quot;Normal mean != 0&quot;"/>
       <value value="&quot;Bimodal one direction&quot;"/>
       <value value="&quot;Bimodal all directions&quot;"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="non-strategic-voting" repetitions="1000" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>vote</go>
+    <timeLimit steps="1"/>
+    <metric>maximal-utility?</metric>
+    <metric>total-payoff-per-issue</metric>
+    <metric>mean-utilities</metric>
+    <metric>median-utilities</metric>
+    <metric>mean-median-same-sign-list</metric>
+    <enumeratedValueSet variable="number-of-voters">
+      <value value="11"/>
+      <value value="51"/>
+      <value value="101"/>
+      <value value="501"/>
+      <value value="1001"/>
+      <value value="5001"/>
+      <value value="10001"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="vote-portion-strategic">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="proportion-of-strategic-voters">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="minority-power">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="y-axis">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="x-axis">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="QV?">
+      <value value="false"/>
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="number-of-issues">
+      <value value="2"/>
+      <value value="4"/>
+      <value value="6"/>
+      <value value="8"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="issue-num">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="poll-response-rate">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="utility-distribution">
+      <value value="&quot;Normal mean = 0&quot;"/>
+      <value value="&quot;Prop8 mean&gt;0&quot;"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="non-strategic-voting (5 issues)" repetitions="1000" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>vote</go>
+    <timeLimit steps="1"/>
+    <metric>maximal-utility?</metric>
+    <metric>total-payoff-per-issue</metric>
+    <metric>mean-utilities</metric>
+    <metric>median-utilities</metric>
+    <metric>mean-median-same-sign-list</metric>
+    <enumeratedValueSet variable="number-of-voters">
+      <value value="11"/>
+      <value value="51"/>
+      <value value="101"/>
+      <value value="501"/>
+      <value value="1001"/>
+      <value value="5001"/>
+      <value value="10001"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="vote-portion-strategic">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="proportion-of-strategic-voters">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="minority-power">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="y-axis">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="x-axis">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="QV?">
+      <value value="false"/>
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="number-of-issues">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="issue-num">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="poll-response-rate">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="utility-distribution">
+      <value value="&quot;Prop8 mean&gt;0&quot;"/>
     </enumeratedValueSet>
   </experiment>
 </experiments>
